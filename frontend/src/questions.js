@@ -98,8 +98,9 @@ export const sections = [
       {
         id: 'A2',
         text: '소규모 비아파트 주택이 특히 중요한 역할을 할 수 있는 분야는 무엇이라고 보십니까?',
-        note: '복수응답 가능',
-        type: Q_TYPE.MULTI_WITH_OTHER,
+        note: '최대 3개 선택',
+        type: Q_TYPE.MULTI_LIMIT_OTHER,
+        maxSelect: 3,
         options: [
           '도심 내 신속한 주택 공급',
           '1~2인 가구용 주택 공급',
@@ -143,8 +144,9 @@ export const sections = [
       {
         id: 'B4',
         text: '규모 기준 확대가 필요하다고 본다면, 그 이유는 무엇입니까?',
-        note: '복수응답 가능',
-        type: Q_TYPE.MULTI_WITH_OTHER,
+        note: '최대 3개 선택',
+        type: Q_TYPE.MULTI_LIMIT_OTHER,
+        maxSelect: 3,
         options: [
           '사업성 확보에 도움이 되기 때문',
           '도심 주택 공급 확대가 가능하기 때문',
@@ -157,8 +159,9 @@ export const sections = [
       {
         id: 'B5',
         text: '규모 기준 확대에 신중해야 하거나 반대한다면, 그 이유는 무엇입니까?',
-        note: '복수응답 가능',
-        type: Q_TYPE.MULTI_WITH_OTHER,
+        note: '최대 3개 선택',
+        type: Q_TYPE.MULTI_LIMIT_OTHER,
+        maxSelect: 3,
         options: [
           '저층주거지 과밀 우려',
           '기반시설 부족 심화 우려',
@@ -211,8 +214,9 @@ export const sections = [
       {
         id: 'C3',
         text: '소규모 비아파트 주택의 용도체계를 유연화할 필요가 있다면, 가장 중요한 이유는 무엇이라고 보십니까?',
-        note: '복수응답 가능',
-        type: Q_TYPE.MULTI_WITH_OTHER,
+        note: '최대 3개 선택',
+        type: Q_TYPE.MULTI_LIMIT_OTHER,
+        maxSelect: 3,
         options: [
           '1~2인 가구 증가 등 수요 변화 반영',
           '다양한 주거유형 공급 필요',
@@ -242,8 +246,9 @@ export const sections = [
       {
         id: 'D2',
         text: '다음 중 규모 기준 확대 또는 규제 완화를 우선 검토할 필요가 있는 지역은 어디라고 보십니까?',
-        note: '복수응답 가능',
-        type: Q_TYPE.MULTI_WITH_OTHER,
+        note: '최대 3개 선택',
+        type: Q_TYPE.MULTI_LIMIT_OTHER,
+        maxSelect: 3,
         options: [
           '역세권',
           '준주거지역',
@@ -257,8 +262,9 @@ export const sections = [
       {
         id: 'D3',
         text: '다음 중 규제 완화 또는 규모 확대에 특히 신중해야 할 지역은 어디라고 보십니까?',
-        note: '복수응답 가능',
-        type: Q_TYPE.MULTI_WITH_OTHER,
+        note: '최대 3개 선택',
+        type: Q_TYPE.MULTI_LIMIT_OTHER,
+        maxSelect: 3,
         options: [
           '기반시설이 부족한 지역',
           '저층 주거환경 보호가 필요한 지역',
@@ -354,8 +360,9 @@ export const sections = [
       {
         id: 'F2',
         text: '소규모 비아파트 주택 공급 확대를 위해 필요한 정책수단은 무엇이라고 보십니까?',
-        note: '복수응답 가능',
-        type: Q_TYPE.MULTI_WITH_OTHER,
+        note: '최대 3개 선택',
+        type: Q_TYPE.MULTI_LIMIT_OTHER,
+        maxSelect: 3,
         options: [
           '저리 금융지원',
           '세제 인센티브',
