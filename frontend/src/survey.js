@@ -408,7 +408,7 @@ export class SurveyEngine {
           <dl class="intro-meta">
             <dt>소요 시간</dt><dd>${m.duration}</dd>
             <dt>비밀보장</dt><dd>통계법 제33조에 따라 비밀 보장, 연구 목적 외 사용 금지</dd>
-            <dt>사례</dt><dd>설문 참여자께 스타벅스 커피 쿠폰 발송</dd>
+            <dt>설문 답례품</dt><dd>스타벅스 커피 아메리카노 쿠폰</dd>
             <dt>연구책임</dt><dd>${m.researcher}</dd>
             <dt>담당</dt><dd>${m.contactName} (${m.contact})</dd>
           </dl>
