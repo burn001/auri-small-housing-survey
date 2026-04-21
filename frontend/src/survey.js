@@ -92,6 +92,16 @@ export class SurveyEngine {
     });
   }
 
+  // ── Question-level Visibility (branching) ──
+  isQuestionVisible(q) {
+    if (!q.showWhen) return true;
+    const depVal = this.responses[q.showWhen.questionId];
+    if (depVal === undefined) return false;
+    if (Array.isArray(q.showWhen.valueIn)) return q.showWhen.valueIn.includes(depVal);
+    if (q.showWhen.value !== undefined) return depVal === q.showWhen.value;
+    return true;
+  }
+
   // ── Render Router ──
   render() {
     if (this.gate === GATE.LOADING) {
@@ -436,6 +446,7 @@ export class SurveyEngine {
     `;
 
     for (const q of section.questions) {
+      if (!this.isQuestionVisible(q)) continue;
       html += this.renderQuestion(q);
     }
 
@@ -611,6 +622,11 @@ export class SurveyEngine {
             input.checked = true;
             item.classList.add('selected');
             this.setResponse(qid, parseInt(input.value) || input.value);
+            const hasDependent = section.questions.some(sq => sq.showWhen && sq.showWhen.questionId === qid);
+            if (hasDependent) {
+              this.renderSection(section);
+              return;
+            }
           } else {
             input.checked = !input.checked;
             item.classList.toggle('selected', input.checked);
@@ -761,6 +777,7 @@ export class SurveyEngine {
 
     for (const q of allQuestions) {
       if (q.optional) continue;
+      if (!this.isQuestionVisible(q)) continue;
 
       const val = this.getResponse(q.id);
       let ok = true;
@@ -915,7 +932,7 @@ export class SurveyEngine {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           token: this.token,
-          survey_version: 'v7',
+          survey_version: 'v7.5',
           responses: { ...this.responses },
         }),
       });

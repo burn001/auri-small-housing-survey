@@ -7,7 +7,7 @@ export const SURVEY_META = {
   institution: '건축공간연구원 (AURI)',
   researcher: '이주경 부연구위원',
   contact: 'jklee@auri.re.kr / 044-417-9658',
-  duration: '약 10~15분',
+  duration: '약 13~18분',
 };
 
 export const Q_TYPE = {
@@ -77,6 +77,23 @@ export const sections = [
           '농산어촌 지역',
           '혼합·전국 단위',
         ],
+      },
+      {
+        id: 'SQ4',
+        text: '귀하께서 소규모(비아파트) 주택 제도와 관련하여 학술·실무적으로 접해 보신 해외 사례를 모두 선택해 주십시오.',
+        note: '복수응답 가능 — 응답자 특성 분석용',
+        type: Q_TYPE.MULTI_WITH_OTHER,
+        options: [
+          '미국 Missing Middle Housing / SB 9 / ADU',
+          '일본 長屋·共同住宅 구분, 低層住居専用地域',
+          '독일 Reihenhaus / Baugruppen / BauNVO',
+          '영국 HMO / PDR(사무실→주거 용도변경)',
+          '네덜란드 Rijtjeshuis(연립 중심 주거)',
+          'New Zealand MDRS (3세대×3층 by-right)',
+          '접해본 해외 사례 없음',
+        ],
+        exclusive: 6,
+        otherLabel: '기타',
       },
     ],
   },
@@ -194,6 +211,21 @@ export const sections = [
         options: ['매우 필요', '다소 필요', '보통', '별로 필요하지 않음', '전혀 필요하지 않음'],
       },
       {
+        id: 'C2_a',
+        text: '용도분류 개편이 필요하다고 보신다면, 다음 중 어느 방향이 가장 바람직하다고 보십니까?',
+        note: 'C2에서 "매우 필요·다소 필요·보통"으로 응답하신 분만 해당',
+        type: Q_TYPE.SINGLE_WITH_OTHER,
+        showWhen: { questionId: 'C2', valueIn: [0, 1, 2] },
+        options: [
+          '현행 단독/공동주택 이분법 유지하되 세부 유형(다가구·다세대 등) 기준 정비',
+          "단독·공동주택 사이에 '준주거용 주택' 등 중간 카테고리 신설 (AURI 2021 제안)",
+          '9대분류 → 30중분류 → 134세분류의 계층 재편 (AURI 장기 제안)',
+          '세대수·면적 기준이 아닌 건축형태·스케일 기반 재분류 (해외 Missing Middle Housing, 독일 Bauweise)',
+          '현행 체계 유지',
+        ],
+        otherLabel: '기타',
+      },
+      {
         id: 'C3',
         text: '소규모 비아파트 주택의 용도체계를 유연화할 필요가 있다면, 가장 중요한 이유는 무엇이라고 보십니까?',
         note: '복수응답 가능',
@@ -265,18 +297,35 @@ export const sections = [
     tag: '공통',
     questions: [
       {
-        id: 'E1',
-        text: '소규모 비아파트 주택 제도 개선 시, 다음 항목의 조정 필요성을 어떻게 보십니까?',
+        id: 'E0',
+        text: '현행 최저주거기준(1인 14㎡, 세대당 부엌·화장실 등)은 소규모 비아파트 주택의 주거품질을 담보하기에 적절하다고 보십니까?',
+        type: Q_TYPE.SINGLE,
+        options: ['매우 적절', '다소 적절', '보통', '다소 미흡', '매우 미흡'],
+      },
+      {
+        id: 'E1a',
+        text: '소규모 비아파트 주택 제도개선 시, 다음 물리규제의 완화 필요성을 평가해 주십시오.',
         type: Q_TYPE.LIKERT_TABLE,
         scaleLabels: SCALE_NECESSITY,
         items: [
-          '주차기준 조정',
-          '용적률·건폐율 기준 조정',
-          '높이 제한 기준 조정',
-          '일조·통풍·이격거리 기준 조정',
+          '주차기준 완화',
+          '용적률·건폐율 완화',
+          '높이 제한 완화',
+          '일조·통풍·이격거리 완화',
           '세대수 산정기준 조정',
-          '소음·방음 등 주거품질 기준 강화',
-          '유지관리 기준 강화',
+        ],
+      },
+      {
+        id: 'E1b',
+        text: '다음 주거품질 기준의 강화 필요성을 평가해 주십시오.',
+        type: Q_TYPE.LIKERT_TABLE,
+        scaleLabels: SCALE_NECESSITY,
+        items: [
+          '소음·방음 기준 강화',
+          '단열·기밀 성능 기준 강화',
+          '채광·환기 기준 강화',
+          '피난·방재 기준 강화',
+          '유지관리 체계 강화',
         ],
       },
       {
