@@ -162,7 +162,7 @@ export class SurveyEngine {
             <dl>
               <dt>조사기관</dt><dd>${m.institution}</dd>
               <dt>연구책임</dt><dd>${m.researcher}</dd>
-              <dt>문의</dt><dd>${m.contact}</dd>
+              <dt>담당</dt><dd>${m.contactName} (${m.contact})</dd>
             </dl>
           </div>
         </div>
@@ -398,7 +398,7 @@ export class SurveyEngine {
 
         <div class="intro-card">
           <h2>설문 구성</h2>
-          <p>본 설문은 <strong>9개 영역 총 27문항</strong>으로 구성됩니다.</p>
+          <p>본 설문은 <strong>9개 영역 총 31문항</strong>으로 구성됩니다.</p>
           <ul style="margin-top:12px">
             <li>SQ. 응답자 선정 (소속·경력·경험·지역)</li>
             <li>A~D. 역할 인식 · 규모 기준 · 용도체계 · 입지 차등</li>
@@ -409,7 +409,8 @@ export class SurveyEngine {
             <dt>소요 시간</dt><dd>${m.duration}</dd>
             <dt>비밀보장</dt><dd>통계법 제33조에 따라 비밀 보장, 연구 목적 외 사용 금지</dd>
             <dt>사례</dt><dd>설문 참여자께 스타벅스 커피 쿠폰 발송</dd>
-            <dt>연구책임</dt><dd>${m.researcher} (${m.contact})</dd>
+            <dt>연구책임</dt><dd>${m.researcher}</dd>
+            <dt>담당</dt><dd>${m.contactName} (${m.contact})</dd>
           </dl>
         </div>
 

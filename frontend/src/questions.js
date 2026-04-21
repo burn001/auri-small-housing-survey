@@ -5,7 +5,8 @@ export const SURVEY_META = {
   title: '소규모 주거용도 건축물 제도개선 연구',
   subtitle: '소규모(비아파트) 주거 관련 제도개선에 대한 전문가 설문조사',
   institution: '건축공간연구원 (AURI)',
-  researcher: '이주경 부연구위원',
+  researcher: '이화영 연구원',
+  contactName: '이주경 부연구위원',
   contact: 'jklee@auri.re.kr / 044-417-9658',
   duration: '약 13~18분',
 };
