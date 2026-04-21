@@ -78,23 +78,6 @@ export const sections = [
           '혼합·전국 단위',
         ],
       },
-      {
-        id: 'SQ4',
-        text: '귀하께서 소규모(비아파트) 주택 제도와 관련하여 학술·실무적으로 접해 보신 해외 사례를 모두 선택해 주십시오.',
-        note: '복수응답 가능 — 응답자 특성 분석용',
-        type: Q_TYPE.MULTI_WITH_OTHER,
-        options: [
-          '미국 Missing Middle Housing / SB 9 / ADU',
-          '일본 長屋·共同住宅 구분, 低層住居専用地域',
-          '독일 Reihenhaus / Baugruppen / BauNVO',
-          '영국 HMO / PDR(사무실→주거 용도변경)',
-          '네덜란드 Rijtjeshuis(연립 중심 주거)',
-          'New Zealand MDRS (3세대×3층 by-right)',
-          '접해본 해외 사례 없음',
-        ],
-        exclusive: 6,
-        otherLabel: '기타',
-      },
     ],
   },
 
