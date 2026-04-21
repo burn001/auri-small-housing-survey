@@ -280,12 +280,6 @@ export const sections = [
     tag: '공통',
     questions: [
       {
-        id: 'E0',
-        text: '현행 최저주거기준(1인 14㎡, 세대당 부엌·화장실 등)은 소규모 비아파트 주택의 주거품질을 담보하기에 적절하다고 보십니까?',
-        type: Q_TYPE.SINGLE,
-        options: ['매우 적절', '다소 적절', '보통', '다소 미흡', '매우 미흡'],
-      },
-      {
         id: 'E1a',
         text: '소규모 비아파트 주택 제도개선 시, 다음 물리규제의 완화 필요성을 평가해 주십시오.',
         type: Q_TYPE.LIKERT_TABLE,

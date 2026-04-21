@@ -398,7 +398,7 @@ export class SurveyEngine {
 
         <div class="intro-card">
           <h2>설문 구성</h2>
-          <p>본 설문은 <strong>9개 영역 총 30문항</strong>으로 구성됩니다.</p>
+          <p>본 설문은 <strong>9개 영역 총 29문항</strong>으로 구성됩니다.</p>
           <ul style="margin-top:12px">
             <li>SQ. 응답자 선정 (소속·경력·경험·지역)</li>
             <li>A~D. 역할 인식 · 규모 기준 · 용도체계 · 입지 차등</li>
@@ -933,7 +933,7 @@ export class SurveyEngine {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           token: this.token,
-          survey_version: 'v7.9',
+          survey_version: 'v8.0',
           responses: { ...this.responses },
         }),
       });
