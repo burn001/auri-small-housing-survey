@@ -933,7 +933,7 @@ export class SurveyEngine {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           token: this.token,
-          survey_version: 'v7.5',
+          survey_version: 'v7.6',
           responses: { ...this.responses },
         }),
       });

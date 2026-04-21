@@ -31,7 +31,7 @@ class ParticipantUpdate(BaseModel):
 
 class ResponseSubmit(BaseModel):
     token: str
-    survey_version: str = "v7.5"
+    survey_version: str = "v7.6"
     responses: dict[str, Any]
 
 
