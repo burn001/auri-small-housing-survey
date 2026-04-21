@@ -442,7 +442,7 @@ export class SurveyEngine {
           <div class="section-header">
             <span class="section-tag">${section.tag}</span>
             <h2>${section.title}</h2>
-            <p class="section-subtitle">${section.subtitle}</p>
+            ${section.subtitle ? `<p class="section-subtitle">${section.subtitle}</p>` : ''}
           </div>
     `;
 
