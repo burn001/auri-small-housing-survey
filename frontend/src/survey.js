@@ -12,7 +12,10 @@ const GATE = {
   OPEN: 'open',
   REGISTER: 'register',                  // 토큰 없는 공개 진입 — 자가등록 폼
   ALREADY_RESPONDED: 'already_responded', // 자가등록 시도 시 이메일 dedup → 이미 응답 완료
+  CLOSED: 'closed',                      // 사례품 정원 도달 — 신규 진입 차단 안내
 };
+
+const SURVEY_LIMIT = 300;
 
 const REGISTER_DRAFT_KEY = 'auri_small_housing_register_draft';
 // 자가등록 시 받는 전문분야 옵션 — questions.js의 SQ1과 동일하게 유지.
@@ -55,12 +58,29 @@ export class SurveyEngine {
     this.regError = '';
     this.regSubmitting = false;
     this.alreadyRespondedReviewUrl = '';   // ALREADY_RESPONDED 화면에서 사용
+    this.surveyStatus = null;              // { completed, limit, is_closed } — fetchSurveyStatus 결과
 
     if (this.token) {
       this.verifyToken().then(() => this.render());
     } else {
-      this.render();
+      // 토큰 없는 공개 진입은 자가등록 페이지를 그리기 전에 마감 여부를 확인한다.
+      // 직원 테스트(`?source=staff`)는 마감과 무관하게 항상 등록 가능 — fetch 자체를 건너뜀.
+      if (this.isStaffMode) {
+        this.render();
+      } else {
+        this.fetchSurveyStatus().finally(() => this.render());
+      }
     }
+  }
+
+  async fetchSurveyStatus() {
+    try {
+      const res = await fetch(`${API_BASE}/api/survey/status`);
+      if (!res.ok) return;
+      const data = await res.json();
+      this.surveyStatus = data;
+      if (data.is_closed) this.gate = GATE.CLOSED;
+    } catch { /* 네트워크 실패 시에는 정상 등록 페이지로 fallback */ }
   }
 
   // ── Register Draft (자가등록 임시저장) ──
@@ -80,6 +100,11 @@ export class SurveyEngine {
   async verifyToken() {
     try {
       const res = await fetch(`${API_BASE}/api/survey/${this.token}`);
+      if (res.status === 410) {
+        // 마감 — 미응답자가 토큰 링크로 들어왔거나, 백엔드가 마감 차단을 응답
+        this.gate = GATE.CLOSED;
+        return;
+      }
       if (!res.ok) {
         this.gate = GATE.DENIED;
         return;
@@ -146,6 +171,10 @@ export class SurveyEngine {
       this.renderLoading();
       return;
     }
+    if (this.gate === GATE.CLOSED) {
+      this.renderClosed();
+      return;
+    }
     if (this.gate === GATE.DENIED) {
       this.renderAccessDenied();
       return;
@@ -182,6 +211,42 @@ export class SurveyEngine {
           <div class="spinner"></div>
           <style>@keyframes spin{to{transform:rotate(360deg)}}.spinner{width:40px;height:40px;border:3px solid #e0e0e0;border-top:3px solid #2c2c2c;border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 24px}</style>
           <p style="color:var(--c-text-secondary)">설문 링크를 확인 중입니다…</p>
+        </div>
+      </div>
+    `;
+  }
+
+  // ── Closed (사례품 정원 도달 — 신규 진입 차단) ──
+  renderClosed() {
+    const m = SURVEY_META;
+    const completed = this.surveyStatus?.completed ?? SURVEY_LIMIT;
+    this.container.innerHTML = `
+      <div class="survey-container">
+        <div class="register-shell">
+          <div class="register-institution">${m.institution}</div>
+          <h1 class="register-title">설문이 마감되었습니다</h1>
+          <div class="register-card" style="text-align:center;padding:40px 24px">
+            <p style="font-size:16px;line-height:1.8;margin:0 0 12px">
+              목표 응답 <strong>${SURVEY_LIMIT}부</strong>가 모두 채워져 추가 응답을 받지 않습니다.
+            </p>
+            <p style="color:var(--c-text-secondary);margin:0 0 16px">
+              현재 완료 응답: <strong>${completed}부</strong>
+            </p>
+            <p style="font-size:15px;color:var(--c-text-secondary);margin:0;line-height:1.7">
+              본 조사에 관심 가져 주셔서 진심으로 감사드립니다.<br>
+              결과 활용 및 후속 안내는 추후 별도 공지를 통해 알려드리겠습니다.
+            </p>
+            <p style="font-size:13px;color:var(--c-text-tertiary);margin:24px 0 0;line-height:1.7">
+              이미 응답을 제출하신 경우, 받으신 안내 메일의 링크로 본인 응답을 확인·수정하실 수 있습니다.
+            </p>
+          </div>
+          <div class="register-meta">
+            <dl>
+              <dt>조사기관</dt><dd>${m.institution}</dd>
+              <dt>연구책임</dt><dd>${m.researcher}</dd>
+              <dt>담당</dt><dd>${m.contactName} (${m.contact})</dd>
+            </dl>
+          </div>
         </div>
       </div>
     `;
@@ -403,6 +468,13 @@ export class SurveyEngine {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
+      if (res.status === 410) {
+        // 등록 시점에 정원이 마감된 경우 — 안내 화면으로 전환
+        this.gate = GATE.CLOSED;
+        this.regSubmitting = false;
+        this.render();
+        return;
+      }
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.detail || `등록 실패 (${res.status})`);

@@ -14,6 +14,27 @@ router = APIRouter(prefix="/api", tags=["responses"])
 
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
+# 사례품 정원 기반 단일 캡 — 도달 시 신규 자가등록·신규 제출·미응답자 토큰 진입 모두 410 차단.
+# 직원 테스트(source=staff)는 카운트와 검사 모두에서 자동 제외. 이미 제출한 응답자의 본인
+# 응답 확인(review)·수정은 마감 후에도 허용 (UX 우선).
+SURVEY_LIMIT = 300
+
+
+async def _get_completed_count(db) -> int:
+    """source=staff를 제외한 submitted 응답 수 (사전등록·자가등록 합산)."""
+    staff_tokens = [
+        p["token"]
+        async for p in db.participants.find({"source": "staff"}, {"token": 1, "_id": 0})
+    ]
+    return await db.responses.count_documents({
+        "submitted_at": {"$ne": None},
+        "token": {"$nin": staff_tokens},
+    })
+
+
+async def _is_survey_closed(db) -> bool:
+    return (await _get_completed_count(db)) >= SURVEY_LIMIT
+
 
 async def _send_completion_email(participant: dict, token: str) -> None:
     """응답 제출 직후 자동 발송. 실패해도 응답 처리는 영향받지 않음.
@@ -61,6 +82,20 @@ async def _send_completion_email(participant: dict, token: str) -> None:
             pass
 
 
+@router.get("/survey/status")
+async def survey_status():
+    """공개 — 설문 진행 상황 (마감 여부·완료 수·limit). 마감 화면용.
+    직원 테스트(source=staff) 응답은 분모·분자 모두 제외된다.
+    """
+    db = get_db()
+    completed = await _get_completed_count(db)
+    return {
+        "completed": completed,
+        "limit": SURVEY_LIMIT,
+        "is_closed": completed >= SURVEY_LIMIT,
+    }
+
+
 @router.get("/survey/{token}")
 async def verify_token(token: str):
     db = get_db()
@@ -69,6 +104,18 @@ async def verify_token(token: str):
         raise HTTPException(404, "유효하지 않은 설문 링크입니다.")
 
     existing = await db.responses.find_one({"token": token}, {"_id": 0})
+
+    # 마감 후에는 미응답자의 신규 진입·이어작성을 차단 (이미 제출한 응답자의 review·수정은 허용).
+    # 직원 테스트(source=staff) 토큰은 마감 검사 자체를 건너뜀.
+    if (
+        participant.get("source") != "staff"
+        and not existing
+        and await _is_survey_closed(db)
+    ):
+        raise HTTPException(
+            410,
+            f"설문이 마감되었습니다. (목표 {SURVEY_LIMIT}부 도달) 참여해 주셔서 감사합니다.",
+        )
     return {
         "token": participant["token"],
         "name": participant.get("name", ""),
@@ -185,6 +232,14 @@ async def submit_response(body: ResponseSubmit, request: Request):
         # 수정 제출 시에는 완료 메일을 다시 보내지 않는다 (스팸 방지). 최초 제출 시점에 1회만 발송.
         return {"status": "updated", "token": body.token}
 
+    # 신규(최초) 제출은 마감 시 차단. 이미 제출한 응답자의 수정은 위 분기에서 통과되므로 영향 없음.
+    # 직원 테스트(source=staff)는 정원 검사 건너뜀.
+    if participant.get("source") != "staff" and await _is_survey_closed(db):
+        raise HTTPException(
+            410,
+            f"설문이 마감되었습니다. (목표 {SURVEY_LIMIT}부 도달) 참여해 주셔서 감사합니다.",
+        )
+
     record = ResponseRecord(
         token=body.token,
         survey_version=body.survey_version,
@@ -226,6 +281,14 @@ async def self_register(body: SelfRegisterRequest, request: Request):
 
     db = get_db()
     existing = await db.participants.find_one({"email": email})
+
+    # 신규 자가등록은 마감 시 차단. 이미 등록된 자(기존 토큰)의 정보 갱신은 허용 — 본인 응답
+    # 확인·수정 가능하도록. 직원 테스트(is_staff=true)는 정원과 무관하게 항상 허용.
+    if not existing and not body.is_staff and await _is_survey_closed(db):
+        raise HTTPException(
+            410,
+            f"설문이 마감되었습니다. (목표 {SURVEY_LIMIT}부 도달) 참여해 주셔서 감사합니다.",
+        )
 
     base_fields = {
         "email": email,

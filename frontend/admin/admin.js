@@ -120,17 +120,41 @@ const CAT_COLORS = {
 };
 
 async function loadDashboard() {
-  const data = await api('/api/admin/stats');
+  // /api/survey/status는 공개 — Auth 헤더 없이도 호출 가능. limit 정원·마감 여부 표시용.
+  const [data, statusRes] = await Promise.all([
+    api('/api/admin/stats'),
+    fetch(API + '/api/survey/status').then(r => r.ok ? r.json() : null).catch(() => null),
+  ]);
   const cats = data.by_category;
 
   const staffNote = (data.staff_participants || 0) > 0
     ? `<div class="stat-card" style="background:#fef3c7"><div class="label">🧪 직원 테스트 (분석 제외)</div><div class="value" style="color:#b45309">${data.staff_responses}/${data.staff_participants}</div></div>`
     : '';
 
+  let limitCard = '';
+  if (statusRes && typeof statusRes.limit === 'number') {
+    const pct = statusRes.limit > 0 ? Math.min(100, (statusRes.completed / statusRes.limit * 100)) : 0;
+    const closedTag = statusRes.is_closed
+      ? '<span class="badge badge-red" style="margin-left:6px">마감</span>'
+      : '';
+    const barColor = statusRes.is_closed ? '#dc2626' : (pct >= 80 ? '#f59e0b' : '#2c2c2c');
+    limitCard = `
+      <div class="stat-card" style="grid-column:span 2;min-width:0">
+        <div class="label">사례품 정원 진행률 ${closedTag}</div>
+        <div class="value" style="font-size:20px">${statusRes.completed} / ${statusRes.limit}부 <span style="font-size:13px;color:var(--text3);font-weight:400">(${pct.toFixed(1)}%)</span></div>
+        <div style="margin-top:8px;background:#e5e7eb;border-radius:4px;height:8px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:${barColor};transition:width .3s"></div>
+        </div>
+        <div style="margin-top:6px;font-size:11px;color:var(--text3)">직원 테스트(staff)는 분모·분자 모두 제외</div>
+      </div>
+    `;
+  }
+
   document.getElementById('stat-cards').innerHTML = `
     <div class="stat-card"><div class="label">전체 대상자${data.staff_excluded ? ' <span style="font-size:10px;color:#94a3b8">(staff 제외)</span>' : ''}</div><div class="value">${data.total_participants}</div></div>
     <div class="stat-card"><div class="label">응답 완료${data.staff_excluded ? ' <span style="font-size:10px;color:#94a3b8">(staff 제외)</span>' : ''}</div><div class="value">${data.total_responses}</div></div>
     <div class="stat-card"><div class="label">응답률</div><div class="value">${data.total_participants ? (data.total_responses / data.total_participants * 100).toFixed(1) : 0}%</div></div>
+    ${limitCard}
     ${staffNote}
   `;
 
