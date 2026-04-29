@@ -3,9 +3,9 @@ from fastapi import APIRouter, Request, HTTPException
 from datetime import datetime, timezone
 import re
 import uuid
-from models import ResponseSubmit, ResponseRecord, ParticipantUpdate, SelfRegisterRequest
+from models import ResponseSubmit, ResponseRecord, ParticipantUpdate, SelfRegisterRequest, RecoverRequest
 from services.db import get_db
-from services.email_service import render_completion, send_email
+from services.email_service import render_completion, render_email, send_email
 from config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -266,10 +266,8 @@ async def submit_response(body: ResponseSubmit, request: Request):
 async def self_register(body: SelfRegisterRequest, request: Request):
     """공개 링크에서 응답자가 직접 정보를 입력하고 토큰을 발급받는다.
 
-    이메일 dedup: 동일 이메일이 imported 또는 self로 이미 등록되어 있으면
-    그 토큰을 그대로 반환하고, 응답 완료 여부(has_responded)를 함께 응답한다.
-    클라이언트는 has_responded=true이면 '이미 응답하셨습니다' 안내 화면을 띄우고,
-    false이면 토큰 URL로 진입시켜 설문을 이어 작성하도록 한다.
+    동일 email은 신규 등록 자체를 차단(409) — 본인 확인은 메일 수신으로만 검증.
+    토큰을 응답에 노출하지 않으며, 분실 복구는 /survey/recover로 처리한다.
     """
     email = (body.email or "").strip().lower()
     name = (body.name or "").strip()
@@ -280,61 +278,113 @@ async def self_register(body: SelfRegisterRequest, request: Request):
     if not body.consent_pi:
         raise HTTPException(400, "개인정보 수집·이용에 동의해 주셔야 참여하실 수 있습니다.")
 
-    now = datetime.utcnow()
-    ip = request.client.host if request.client else ""
-    ua = request.headers.get("user-agent", "")
-
     db = get_db()
     existing = await db.participants.find_one({"email": email})
 
-    # 신규 자가등록은 마감 시 차단. 이미 등록된 자(기존 토큰)의 정보 갱신은 허용 — 본인 응답
-    # 확인·수정 가능하도록. 직원 테스트(is_staff=true)는 정원과 무관하게 항상 허용.
-    if not existing and not body.is_staff and await _is_survey_closed(db):
+    # 동일 email은 신규 등록 자체를 차단 — 본인 확인은 메일 수신으로만 검증.
+    # 토큰을 응답에 노출하지 않고, 분실 복구는 /survey/recover로 처리.
+    if existing:
+        raise HTTPException(
+            409,
+            "이 이메일로 이미 등록되어 있습니다. 처음 등록 시 받으신 메일의 링크로 접속하시거나, 메일을 못 받으셨다면 '토큰 재발송'을 요청해 주십시오.",
+        )
+
+    # 직원 테스트(is_staff=true)는 정원 검사를 건너뜀.
+    if not body.is_staff and await _is_survey_closed(db):
         raise HTTPException(
             410,
             f"설문이 마감되었습니다. (목표 {SURVEY_LIMIT}부 도달) 참여해 주셔서 감사합니다.",
         )
 
-    base_fields = {
+    now = datetime.utcnow()
+    ip = request.client.host if request.client else ""
+    ua = request.headers.get("user-agent", "")
+    token = uuid.uuid4().hex[:16]
+
+    doc = {
+        "token": token,
         "email": email,
         "name": name,
         "org": (body.org or "").strip(),
         "category": (body.category or "").strip(),
+        "field": "",
+        "phone": "",
+        "source": "staff" if body.is_staff else "self",
         "consent_pi": True,
         "consent_pi_at": now,
         "register_ip": ip,
         "register_ua": ua,
         "register_updated_at": now,
+        "created_at": now,
     }
-
-    if existing:
-        token = existing["token"]
-        # 기존 등록자의 source는 보존 (첫 진입 채널 유지). imported였던 응답자가
-        # 자가등록 페이지로 들어와도 imported로 남는다. 단 직원 테스트 모드는 동일 이메일로
-        # 다시 진입했더라도 staff로 승격(분석에서 제외되도록).
-        existing_source = existing.get("source", "imported")
-        base_fields["source"] = "staff" if body.is_staff else existing_source
-        await db.participants.update_one({"token": token}, {"$set": base_fields})
-        status = "updated"
-    else:
-        token = uuid.uuid4().hex[:16]
-        base_fields.update({
-            "token": token,
-            "source": "staff" if body.is_staff else "self",
-            "field": "",
-            "phone": "",
-            "created_at": now,
-        })
-        await db.participants.insert_one(base_fields)
-        status = "created"
-
-    has_responded = (await db.responses.find_one({"token": token}, {"_id": 1})) is not None
+    await db.participants.insert_one(doc)
 
     return {
-        "status": status,
+        "status": "created",
         "token": token,
-        "has_responded": has_responded,
     }
+
+
+@router.post("/survey/recover")
+async def recover_token(body: RecoverRequest):
+    """자가등록자가 토큰 링크를 분실한 경우, 등록 시 사용한 email로 토큰 링크를 재발송한다.
+
+    - 응답에는 토큰을 노출하지 않는다 (메일 수신만이 본인 확인 메커니즘).
+    - 등록 여부와 무관하게 동일한 응답을 반환해 email 정찰을 어렵게 한다.
+    - 응답 미제출이면 '설문 시작 링크', 제출 완료면 '응답 확인·수정 링크'를 발송한다.
+    """
+    s = get_settings()
+    email = (body.email or "").strip().lower()
+    if not EMAIL_RE.match(email):
+        raise HTTPException(400, "올바른 이메일을 입력해 주십시오.")
+
+    db = get_db()
+    participant = await db.participants.find_one({"email": email}, {"_id": 0})
+    if not participant:
+        return {"status": "sent"}
+
+    token = participant["token"]
+    name = participant.get("name") or "응답자"
+    org = participant.get("org", "")
+
+    existing_resp = await db.responses.find_one({"token": token}, {"submitted_at": 1})
+    has_submitted = bool(existing_resp and existing_resp.get("submitted_at"))
+
+    base = (s.SURVEY_BASE_URL or "").rstrip("/")
+    link_url = f"{base}/?token={token}"
+    if has_submitted:
+        subject = "[AURI 소규모 주거 전문가 설문] 응답 확인·수정 링크 재발송"
+        html = render_completion(name, org, link_url)
+    else:
+        subject = "[AURI 소규모 주거 전문가 설문] 설문 참여 링크 재발송"
+        html = render_email(name, org, link_url)
+
+    log_doc = {
+        "batch_id": "auto-recovery",
+        "token": token,
+        "email": email,
+        "name": participant.get("name", ""),
+        "org": org,
+        "category": participant.get("category", ""),
+        "type": "recovery",
+        "subject": subject,
+        "admin_email": "system",
+        "admin_name": "자동 재발송",
+        "sent_at": datetime.utcnow(),
+    }
+    try:
+        send_email(email, subject, html)
+        log_doc.update({"status": "sent", "error": ""})
+    except Exception as e:
+        err = str(e)
+        logger.warning(f"Recovery email failed for {email}: {err}")
+        log_doc.update({"status": "failed", "error": err})
+    try:
+        await db.email_logs.insert_one(log_doc)
+    except Exception:
+        pass
+
+    return {"status": "sent"}
 
 
 @router.get("/responses/{token}")

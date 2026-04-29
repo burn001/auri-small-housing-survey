@@ -22,7 +22,7 @@ class Participant(BaseModel):
 class SelfRegisterRequest(BaseModel):
     """공개 단일 링크 자가등록 페이로드.
 
-    필수: email(완료 메일·dedup), name, consent_pi.
+    필수: email(완료 메일·본인 확인 채널), name, consent_pi.
     선택: org, category(SQ1 분류와 동일 옵션 권장).
     사례품 동의는 응답 제출 시점에 받으므로 자가등록 단계에서는 받지 않는다.
     is_staff=True 진입(`?source=staff`)은 직원 테스트 모드 — source='staff'로 기록되어
@@ -34,6 +34,11 @@ class SelfRegisterRequest(BaseModel):
     category: str = ""
     consent_pi: bool
     is_staff: bool = False
+
+
+class RecoverRequest(BaseModel):
+    """기존 자가등록자가 토큰 링크를 분실한 경우 — email로 본인 토큰 링크 재발송."""
+    email: str
 
 
 class ParticipantOut(BaseModel):
