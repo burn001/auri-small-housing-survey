@@ -105,6 +105,10 @@ async def list_responses(
             "org": "$participant.org",
             "category": "$participant.category",
             "field": "$participant.field",
+            "consent_reward": {"$ifNull": ["$participant.consent_reward", False]},
+            "reward_name": {"$ifNull": ["$participant.reward_name", ""]},
+            "reward_phone": {"$ifNull": ["$participant.reward_phone", ""]},
+            "consent_reward_at": "$participant.consent_reward_at",
         }},
     ]
     cursor = db.responses.aggregate(pipeline)

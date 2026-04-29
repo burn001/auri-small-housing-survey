@@ -626,19 +626,48 @@ async function loadResponses() {
   rCache = data.data;
 
   document.getElementById('r-table').innerHTML = `<table>
-    <thead><tr><th>이름</th><th>소속</th><th>구분</th><th>전문분야</th><th>제출일시</th><th>수정일시</th><th>상세</th></tr></thead>
+    <thead><tr><th>이름</th><th>소속</th><th>구분</th><th>전문분야</th><th>사례품</th><th>제출일시</th><th>수정일시</th><th>상세</th></tr></thead>
     <tbody>${rCache.map(r => {
+      const reward = r.consent_reward
+        ? `<span class="badge badge-purple">🎁 동의</span><div style="font-size:11px;color:#666;margin-top:2px;font-family:monospace">${r.reward_phone || '(미입력)'}</div>`
+        : '<span style="color:#aaa;font-size:11px">미동의</span>';
       return `<tr>
         <td>${r.name || ''}</td>
         <td>${r.org || ''}</td>
         <td><span class="badge badge-blue">${r.category || ''}</span></td>
         <td style="font-size:11px;color:#555">${r.field || ''}</td>
+        <td>${reward}</td>
         <td style="font-size:12px">${r.submitted_at ? new Date(r.submitted_at).toLocaleString('ko') : ''}</td>
         <td style="font-size:12px">${r.updated_at ? new Date(r.updated_at).toLocaleString('ko') : '-'}</td>
         <td><button class="btn btn-sm btn-outline" onclick="showResponseDetail('${r.token}')">열기</button></td>
       </tr>`;
     }).join('')}</tbody>
   </table>`;
+}
+
+function exportRewardCSV() {
+  const eligible = rCache.filter(r => r.consent_reward && r.reward_phone);
+  if (eligible.length === 0) {
+    toast('사례품 발송 대상 없음 (동의 + 휴대폰 입력 + 응답완료 기준).', 'error');
+    return;
+  }
+  const rows = [['이름', '소속', '구분', '휴대폰', '응답일시', '동의일시', '이메일', '토큰']];
+  eligible.forEach(r => {
+    rows.push([
+      r.name || '', r.org || '', r.category || '',
+      r.reward_phone || '',
+      r.submitted_at ? new Date(r.submitted_at).toLocaleString('ko') : '',
+      r.consent_reward_at ? new Date(r.consent_reward_at).toLocaleString('ko') : '',
+      r.email || '', r.token || '',
+    ]);
+  });
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `reward_recipients_${Date.now()}.csv`;
+  a.click();
+  toast(`사례품 명단 ${eligible.length}건 다운로드`);
 }
 
 // ── Response Detail Modal ──
@@ -715,6 +744,9 @@ async function showResponseDetail(token) {
   const sections = window.SURVEY_SECTIONS;
   const QT = window.Q_TYPE || {};
 
+  const rewardLine = row.consent_reward
+    ? `<dt>사례품 수령</dt><dd>🎁 동의 — ${escapeHtml(row.reward_name || row.name || '-')} · <code style="font-size:11px">${escapeHtml(row.reward_phone || '-')}</code></dd>`
+    : '<dt>사례품 수령</dt><dd style="color:#999">미동의</dd>';
   const meta = `
     <div class="resp-meta">
       <dl>
@@ -722,6 +754,7 @@ async function showResponseDetail(token) {
         <dt>소속</dt><dd>${escapeHtml(row.org || '-')}</dd>
         <dt>구분</dt><dd><span class="badge badge-blue">${escapeHtml(row.category || '-')}</span></dd>
         ${row.field ? `<dt>전문분야</dt><dd>${escapeHtml(row.field)}</dd>` : ''}
+        ${rewardLine}
         <dt>토큰</dt><dd><code style="font-size:11px">${escapeHtml(token)}</code></dd>
         <dt>설문 버전</dt><dd>${escapeHtml(row.survey_version || '-')}</dd>
         <dt>제출</dt><dd style="font-size:12px">${row.submitted_at ? new Date(row.submitted_at).toLocaleString('ko') : '-'}</dd>

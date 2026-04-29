@@ -31,8 +31,10 @@ class ParticipantUpdate(BaseModel):
 
 class ResponseSubmit(BaseModel):
     token: str
-    survey_version: str = "v9.1"
+    survey_version: str = "v10.0"
     responses: dict[str, Any]
+    consent_reward: Optional[bool] = None  # None = 옛 v9.1 이전 응답 호환
+    reward_phone: Optional[str] = None
 
 
 class ResponseRecord(BaseModel):

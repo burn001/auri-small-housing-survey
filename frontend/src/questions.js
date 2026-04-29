@@ -1,5 +1,5 @@
 // 소규모(비아파트) 주거 관련 제도개선에 대한 전문가 설문조사
-// 출처: 26.04.27.전문가설문_HWA 추가수정.hwpx (v9.1 — G1 "생활환경 악화" 삭제로 G2와 1:1 정렬)
+// 출처: 26.04.27.전문가설문_HWA 추가수정.hwpx (v10.0 — 사례품 발송용 개인정보 수집·이용 동의 단계 추가)
 
 export const SURVEY_META = {
   title: '소규모 주거용도 건축물 제도개선 연구',
@@ -21,6 +21,7 @@ export const Q_TYPE = {
   MULTI_WITH_OTHER: 'multi_other',
   MULTI_LIMIT_OTHER: 'multi_limit_other',
   SUB_QUESTIONS: 'sub_questions',
+  CONSENT_REWARD: 'consent_reward',
 };
 
 const SCALE_NECESSITY = ['전혀 필요하지 않음', '별로 필요하지 않음', '보통', '다소 필요', '매우 필요'];
@@ -496,16 +497,32 @@ export const sections = [
   {
     id: 'contact',
     title: '답례품 발송용 연락처 (선택)',
-    subtitle: '설문 참여 감사의 의미로 스타벅스 아메리카노 쿠폰을 발송해 드립니다. 쿠폰 수령을 원하시면 휴대전화 번호를 입력해 주십시오. (선택 사항)',
+    subtitle: '설문 참여에 감사드리며, 끝까지 응답해 주신 분께는 <strong>스타벅스 아메리카노 모바일 쿠폰</strong>을 발송해 드립니다. 쿠폰 수령을 원하시면 아래 개인정보 수집·이용에 동의해 주신 후 휴대전화 번호를 입력해 주십시오.',
     tag: '공통',
     questions: [
       {
+        id: 'CONSENT_REWARD',
+        type: Q_TYPE.CONSENT_REWARD,
+        text: '🎁 사례품 발송을 위한 개인정보 수집·이용 동의 (선택)',
+        notice: {
+          intro: '「개인정보 보호법」 제15조에 따라 아래 사항을 안내드립니다. 사례품 수령을 원하지 않으시는 경우 동의를 거부하시고 그대로 제출하셔도 됩니다.',
+          rows: [
+            ['수집 항목', '휴대전화 번호'],
+            ['수집·이용 목적', '설문 참여 사례품(스타벅스 아메리카노 모바일 쿠폰) 발송. 분석·통계 처리에는 사용하지 않습니다.'],
+            ['보유·이용 기간', '발송 완료 후 즉시 파기 (지급 분쟁 발생 시 6개월까지 한정 보존)'],
+            ['거부 권리', '동의를 거부할 수 있으며, 거부 시 사례품 발송이 불가합니다. (설문 참여는 가능)'],
+          ],
+          consentLabel: '사례품 발송을 위한 휴대전화 번호 수집·이용에 <strong>동의합니다 (선택)</strong>.',
+        },
+        optional: true,
+      },
+      {
         id: 'PHONE',
         text: '휴대전화 번호',
-        note: '선택 입력 (답례품 쿠폰 발송 목적에 한해 사용하며, 발송 후 즉시 파기합니다)',
+        note: '동의 시 필수 입력. 발송 후 즉시 파기됩니다.',
         type: Q_TYPE.TEXT,
         placeholder: '예: 010-1234-5678',
-        optional: true,
+        showWhen: { questionId: 'CONSENT_REWARD', equals: true },
         pattern: '^01[016789]-?\\d{3,4}-?\\d{4}$',
         patternMessage: '올바른 휴대전화 번호 형식으로 입력해 주십시오.',
       },

@@ -99,6 +99,7 @@ export class SurveyEngine {
     if (depVal === undefined) return false;
     if (Array.isArray(q.showWhen.valueIn)) return q.showWhen.valueIn.includes(depVal);
     if (q.showWhen.value !== undefined) return depVal === q.showWhen.value;
+    if (q.showWhen.equals !== undefined) return depVal === q.showWhen.equals;
     return true;
   }
 
@@ -471,6 +472,9 @@ export class SurveyEngine {
     if (q.type === Q_TYPE.SUB_QUESTIONS) {
       return this.renderSubQuestions(q);
     }
+    if (q.type === Q_TYPE.CONSENT_REWARD) {
+      return this.renderConsentReward(q);
+    }
 
     let inner = '';
     const noteHtml = q.note ? `<p class="question-note">${q.note}</p>` : '';
@@ -504,6 +508,29 @@ export class SurveyEngine {
         </div>
         ${noteHtml}
         ${inner}
+        <p class="question-error" data-error="${q.id}"></p>
+      </div>
+    `;
+  }
+
+  renderConsentReward(q) {
+    const notice = q.notice || {};
+    const rows = (notice.rows || []).map(([k, v]) =>
+      `<tr><th>${k}</th><td>${v}</td></tr>`
+    ).join('');
+    return `
+      <div class="question-block consent-block" data-qid="${q.id}">
+        <div class="question-label">
+          <span class="question-text">${q.text}</span>
+        </div>
+        ${notice.intro ? `<p class="consent-intro">${notice.intro}</p>` : ''}
+        <table class="consent-table">
+          <tbody>${rows}</tbody>
+        </table>
+        <label class="consent-check">
+          <input type="checkbox" data-consent-qid="${q.id}" />
+          <span>${notice.consentLabel || '위 사항에 동의합니다 (선택).'}</span>
+        </label>
         <p class="question-error" data-error="${q.id}"></p>
       </div>
     `;
@@ -693,6 +720,23 @@ export class SurveyEngine {
       });
       el.addEventListener('click', (e) => e.stopPropagation());
     });
+
+    this.container.querySelectorAll('input[data-consent-qid]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const qid = cb.dataset.consentQid;
+        this.setResponse(qid, cb.checked);
+        // 동의 해제 시 의존 응답(PHONE 등) 정리
+        if (!cb.checked) {
+          const allQ = this.getAllQuestions(section);
+          allQ.forEach(dq => {
+            if (dq.showWhen && dq.showWhen.questionId === qid) {
+              this.setResponse(dq.id, undefined);
+            }
+          });
+        }
+        this.render();
+      });
+    });
   }
 
   collectMultiResponse(qid, list) {
@@ -733,6 +777,9 @@ export class SurveyEngine {
             if (radio) radio.checked = true;
           }
         }
+      } else if (q.type === Q_TYPE.CONSENT_REWARD) {
+        const cb = this.container.querySelector(`input[data-consent-qid="${q.id}"]`);
+        if (cb) cb.checked = !!val;
       } else if (q.type === Q_TYPE.TEXT) {
         const el = this.container.querySelector(`[data-qid="${q.id}"]`);
         if (el) el.value = val;
@@ -928,13 +975,22 @@ export class SurveyEngine {
     `;
 
     try {
+      // 응답 dict 에서 사례품 동의·휴대폰은 분리해 별도 필드로 전송 (PII 분리)
+      const responsesPayload = { ...this.responses };
+      const consentReward = !!responsesPayload['CONSENT_REWARD'];
+      const rewardPhone = consentReward ? (responsesPayload['PHONE'] || '').trim() : '';
+      delete responsesPayload['CONSENT_REWARD'];
+      delete responsesPayload['PHONE'];
+
       const res = await fetch(`${API_BASE}/api/responses`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           token: this.token,
-          survey_version: 'v9.1',
-          responses: { ...this.responses },
+          survey_version: 'v10.0',
+          responses: responsesPayload,
+          consent_reward: consentReward,
+          reward_phone: rewardPhone,
         }),
       });
 

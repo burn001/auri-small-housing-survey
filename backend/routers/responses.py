@@ -93,6 +93,24 @@ async def submit_response(body: ResponseSubmit, request: Request):
     ip = request.client.host if request.client else ""
     ua = request.headers.get("user-agent", "")
 
+    # 사례품 동의·휴대폰은 participants 문서에 별도 저장 (응답 데이터와 분리)
+    if body.consent_reward is not None:
+        participant_update: dict = {
+            "consent_reward": bool(body.consent_reward),
+            "consent_reward_at": now if body.consent_reward else None,
+        }
+        if body.consent_reward:
+            participant_update["reward_phone"] = (body.reward_phone or "").strip()
+            participant_update["reward_name"] = participant.get("name", "")
+        else:
+            # 거부 시 기존 reward 정보 비움
+            participant_update["reward_phone"] = ""
+            participant_update["reward_name"] = ""
+        await db.participants.update_one(
+            {"token": body.token},
+            {"$set": participant_update},
+        )
+
     existing = await db.responses.find_one({"token": body.token})
     if existing:
         await db.responses.update_one(
