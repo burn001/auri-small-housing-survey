@@ -41,10 +41,9 @@ async def _is_survey_closed(db) -> bool:
     return (await _get_completed_count(db)) >= SURVEY_LIMIT
 
 
-# 50부 단위 마일스톤 보고 메일 — 연구진(이주경 부연구위원)에게 진행 현황 통보.
-# TODO: 이화영 연구원 이메일 확인 후 MILESTONE_TO에 추가
+# 50부 단위 마일스톤 보고 메일 — 연구책임 이화영 연구원·연구진 이주경 부연구위원에게 진행 현황 통보.
 MILESTONES = [50, 100, 150, 200, 250, 300]
-MILESTONE_TO = ["jklee@auri.re.kr"]
+MILESTONE_TO = ["hylee@auri.re.kr", "jklee@auri.re.kr"]
 MILESTONE_CC = ["blaster@auri.re.kr"]
 
 
