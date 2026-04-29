@@ -27,12 +27,22 @@ function logout() {
   document.getElementById('login').style.display = 'flex';
 }
 
-// Auto-login
+// Auto-login: URL ?key= 우선, 없으면 sessionStorage
 (function init() {
+  const params = new URLSearchParams(window.location.search);
+  const urlKey = params.get('key');
   const saved = sessionStorage.getItem('adminKey');
-  if (saved) {
-    ADMIN_KEY = saved;
-    document.getElementById('admin-key-input').value = saved;
+  const initialKey = urlKey || saved;
+  if (urlKey) {
+    // URL에서 key 제거 — history·referer 노출 최소화 (sessionStorage에는 doLogin 성공 시 저장됨)
+    params.delete('key');
+    const qs = params.toString();
+    const cleanUrl = window.location.pathname + (qs ? '?' + qs : '') + window.location.hash;
+    window.history.replaceState({}, document.title, cleanUrl);
+  }
+  if (initialKey) {
+    ADMIN_KEY = initialKey;
+    document.getElementById('admin-key-input').value = initialKey;
     doLogin();
   }
   document.getElementById('admin-key-input').addEventListener('keydown', e => {
