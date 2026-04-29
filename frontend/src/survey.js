@@ -1,4 +1,4 @@
-import { sections, Q_TYPE, SURVEY_META } from './questions.js';
+import { sections, Q_TYPE, SURVEY_META, REWARD_CONSENT_NOTICE } from './questions.js';
 
 const STORAGE_KEY = 'auri_survey_responses';
 const STORAGE_PAGE_KEY = 'auri_survey_page';
@@ -377,6 +377,13 @@ export class SurveyEngine {
       ? '응답 수정 시작하기'
       : '설문 시작하기';
 
+    const consent = !!this.responses['CONSENT_REWARD'];
+    const phone = this.responses['PHONE'] || '';
+    const N = REWARD_CONSENT_NOTICE;
+    const consentRows = N.rows.map(([k, v]) =>
+      `<tr><th>${k}</th><td>${v}</td></tr>`
+    ).join('');
+
     this.container.innerHTML = `
       ${statusBar}
       <div class="progress-bar-wrap"><div class="progress-bar-inner">
@@ -415,14 +422,80 @@ export class SurveyEngine {
           </dl>
         </div>
 
+        <div class="intro-card consent-block">
+          <h2>${N.title}</h2>
+          <p class="consent-intro">${N.lead}</p>
+          <table class="consent-table">
+            <tbody>${consentRows}</tbody>
+          </table>
+          <label class="consent-check">
+            <input type="checkbox" id="intro-consent" ${consent ? 'checked' : ''} />
+            <span>${N.consentLabel}</span>
+          </label>
+          <div id="intro-phone-wrap" style="${consent ? '' : 'display:none'};margin-top:12px">
+            <label style="display:block;font-size:13px;color:#374151;margin-bottom:6px">
+              휴대전화 번호 <span style="color:#dc2626">*</span>
+              <span style="font-size:11px;color:#6b7280;font-weight:400;margin-left:6px">동의 시 필수 · 발송 후 즉시 파기</span>
+            </label>
+            <input type="tel" id="intro-phone" value="${phone.replace(/"/g, '&quot;')}" placeholder="010-1234-5678"
+              style="width:100%;max-width:320px;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px" />
+            <p id="intro-phone-error" style="display:none;color:#b91c1c;font-size:12px;margin-top:6px"></p>
+          </div>
+        </div>
+
         <button class="btn-start" id="btn-start">${startLabel}</button>
       </div>
     `;
     this.bindParticipantEvents();
+    this.bindIntroConsentEvents();
     this.container.querySelector('#btn-start')?.addEventListener('click', () => {
+      if (!this.commitIntroConsent()) return;
       this.currentPage = 1;
       this.render();
     });
+  }
+
+  bindIntroConsentEvents() {
+    const cb = this.container.querySelector('#intro-consent');
+    const wrap = this.container.querySelector('#intro-phone-wrap');
+    const phoneInput = this.container.querySelector('#intro-phone');
+    if (!cb) return;
+    cb.addEventListener('change', () => {
+      if (cb.checked) {
+        wrap.style.display = '';
+        phoneInput?.focus();
+      } else {
+        wrap.style.display = 'none';
+        if (phoneInput) phoneInput.value = '';
+        const err = this.container.querySelector('#intro-phone-error');
+        if (err) err.style.display = 'none';
+      }
+    });
+  }
+
+  commitIntroConsent() {
+    const cb = this.container.querySelector('#intro-consent');
+    const phoneInput = this.container.querySelector('#intro-phone');
+    const errEl = this.container.querySelector('#intro-phone-error');
+    if (!cb) return true;  // intro 외 페이지에서 호출된 경우
+    if (cb.checked) {
+      const phone = (phoneInput?.value || '').trim();
+      const re = new RegExp(REWARD_CONSENT_NOTICE.phonePattern);
+      if (!re.test(phone)) {
+        if (errEl) {
+          errEl.textContent = REWARD_CONSENT_NOTICE.phonePatternMessage;
+          errEl.style.display = '';
+        }
+        phoneInput?.focus();
+        return false;
+      }
+      this.setResponse('CONSENT_REWARD', true);
+      this.setResponse('PHONE', phone);
+    } else {
+      this.setResponse('CONSENT_REWARD', false);
+      this.setResponse('PHONE', '');
+    }
+    return true;
   }
 
   // ── Section ──
@@ -471,9 +544,6 @@ export class SurveyEngine {
   renderQuestion(q) {
     if (q.type === Q_TYPE.SUB_QUESTIONS) {
       return this.renderSubQuestions(q);
-    }
-    if (q.type === Q_TYPE.CONSENT_REWARD) {
-      return this.renderConsentReward(q);
     }
 
     let inner = '';
