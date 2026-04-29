@@ -70,7 +70,18 @@ async function api(path, opts = {}) {
     ...opts,
     headers: { 'X-Admin-Key': ADMIN_KEY, 'Content-Type': 'application/json', ...(opts.headers || {}) },
   });
-  if (!res.ok) throw new Error(res.statusText);
+  if (!res.ok) {
+    // FastAPI는 에러 시 {"detail": "..."} 로 응답. detail이 있으면 그걸 노출, 없으면 statusText.
+    let detail = '';
+    try {
+      const body = await res.clone().json();
+      if (body && typeof body.detail === 'string') detail = body.detail;
+      else if (body && body.detail) detail = JSON.stringify(body.detail);
+    } catch { /* JSON 아님 — 무시 */ }
+    const err = new Error(detail || `${res.status} ${res.statusText}`);
+    err.status = res.status;
+    throw err;
+  }
   if (res.headers.get('content-type')?.includes('text/csv')) return res;
   return res.json();
 }
