@@ -10,7 +10,20 @@ const GATE = {
   RESUBMIT_CHOICE: 'resubmit_choice',
   READ_ONLY: 'read_only',
   OPEN: 'open',
+  REGISTER: 'register',                  // 토큰 없는 공개 진입 — 자가등록 폼
+  ALREADY_RESPONDED: 'already_responded', // 자가등록 시도 시 이메일 dedup → 이미 응답 완료
 };
+
+const REGISTER_DRAFT_KEY = 'auri_small_housing_register_draft';
+// 자가등록 시 받는 전문분야 옵션 — questions.js의 SQ1과 동일하게 유지.
+const SELF_REG_CATEGORIES = [
+  '학계',
+  '연구기관',
+  '중앙부처·지자체·공공기관',
+  '건설·개발·금융업계',
+  '건축·설계·감리',
+  '기타',
+];
 
 const EDIT_MODE = {
   NEW: 'new',
@@ -26,18 +39,37 @@ export class SurveyEngine {
     this.submittedAt = null;
     this.updatedAt = null;
     this.editMode = EDIT_MODE.NEW;
-    this.gate = this.token ? GATE.LOADING : GATE.DENIED;
+    this.gate = this.token ? GATE.LOADING : GATE.REGISTER;
     this.responses = this.loadResponses();
     this.currentPage = 0;
     this.visibleSections = [];
     this.editingParticipant = false;
     this.participantFormError = '';
+    // 자가등록(GATE.REGISTER) 상태
+    this.regDraft = this.loadRegisterDraft();
+    this.regError = '';
+    this.regSubmitting = false;
+    this.alreadyRespondedReviewUrl = '';   // ALREADY_RESPONDED 화면에서 사용
 
     if (this.token) {
       this.verifyToken().then(() => this.render());
     } else {
       this.render();
     }
+  }
+
+  // ── Register Draft (자가등록 임시저장) ──
+  loadRegisterDraft() {
+    try {
+      const saved = localStorage.getItem(REGISTER_DRAFT_KEY);
+      return saved ? JSON.parse(saved) : { email: '', name: '', org: '', category: '', consent_pi: false };
+    } catch { return { email: '', name: '', org: '', category: '', consent_pi: false }; }
+  }
+  saveRegisterDraft() {
+    localStorage.setItem(REGISTER_DRAFT_KEY, JSON.stringify(this.regDraft));
+  }
+  clearRegisterDraft() {
+    localStorage.removeItem(REGISTER_DRAFT_KEY);
   }
 
   async verifyToken() {
@@ -111,6 +143,14 @@ export class SurveyEngine {
     }
     if (this.gate === GATE.DENIED) {
       this.renderAccessDenied();
+      return;
+    }
+    if (this.gate === GATE.REGISTER) {
+      this.renderRegister();
+      return;
+    }
+    if (this.gate === GATE.ALREADY_RESPONDED) {
+      this.renderAlreadyResponded();
       return;
     }
     if (this.gate === GATE.RESUBMIT_CHOICE) {
@@ -209,6 +249,203 @@ export class SurveyEngine {
       this.gate = GATE.READ_ONLY;
       this.render();
     });
+  }
+
+  // ── Register (공개 자가등록 폼) ──
+  renderRegister() {
+    const m = SURVEY_META;
+    const d = this.regDraft;
+    const errHtml = this.regError ? `<p class="register-error">${this.escape(this.regError)}</p>` : '';
+    const submitting = this.regSubmitting ? '<span class="register-submitting">등록 중…</span>' : '';
+    const catOptions = SELF_REG_CATEGORIES.map(c => {
+      const sel = (d.category === c) ? 'selected' : '';
+      return `<option value="${this.escape(c)}" ${sel}>${this.escape(c)}</option>`;
+    }).join('');
+
+    this.container.innerHTML = `
+      <div class="survey-container">
+        <div class="register-shell">
+          <div class="register-institution">${m.institution}</div>
+          <h1 class="register-title">${m.title}</h1>
+          <div class="register-subtitle">${m.subtitle}</div>
+
+          <div class="register-card">
+            <h3>본 설문 안내</h3>
+            <p style="font-size:13px;line-height:1.7;color:#444;margin:0">
+              본 설문은 「소규모(비아파트) 주거 관련 제도개선」 연구를 위한 전문가 의견 조사입니다.
+              아래 정보를 입력하시면 응답용 링크가 발급되며, 이어서 설문에 참여하실 수 있습니다.
+              총 소요시간은 <strong>약 ${m.duration}</strong>입니다.
+            </p>
+          </div>
+
+          <div class="register-card">
+            <h3>응답자 정보 입력</h3>
+            ${errHtml}
+            <div class="register-section">
+              <label class="register-label">이메일 <span class="register-req">*</span></label>
+              <p class="register-hint">응답 완료 안내·중복 응답 확인에만 사용되며, 분석 데이터에는 포함되지 않습니다.</p>
+              <input id="reg-email" type="email" class="register-input" placeholder="example@auri.re.kr"
+                     value="${this.escape(d.email || '')}" autocomplete="email">
+            </div>
+            <div class="register-section">
+              <label class="register-label">성명 <span class="register-req">*</span></label>
+              <input id="reg-name" type="text" class="register-input" placeholder="홍길동"
+                     value="${this.escape(d.name || '')}">
+            </div>
+            <div class="register-section">
+              <label class="register-label">소속 기관</label>
+              <input id="reg-org" type="text" class="register-input" placeholder="예) ○○대학교 / ○○연구원 / ○○건축사사무소"
+                     value="${this.escape(d.org || '')}">
+            </div>
+            <div class="register-section">
+              <label class="register-label">소속 분야</label>
+              <select id="reg-category" class="register-input">
+                <option value="">선택해 주십시오</option>
+                ${catOptions}
+              </select>
+            </div>
+          </div>
+
+          <div class="register-card">
+            <h3>개인정보 수집·이용 동의 <span class="register-req">*</span></h3>
+            <p class="register-hint" style="margin-bottom:8px">
+              본 연구의 응답 완료 안내 및 동일인의 중복 응답 확인을 위하여 이메일을 수집·이용하며,
+              연구 종료 후에는 식별 정보가 모두 파기됩니다. 통계 분석 시 응답자는 익명 처리됩니다.
+            </p>
+            <label class="register-consent">
+              <input id="reg-consent" type="checkbox" ${d.consent_pi ? 'checked' : ''}>
+              <span>위 내용을 읽고 동의합니다.</span>
+            </label>
+          </div>
+
+          <div class="register-actions">
+            <button class="btn btn-next" id="btn-reg-submit" ${this.regSubmitting ? 'disabled' : ''}>
+              설문 시작
+            </button>
+            ${submitting}
+          </div>
+
+          <div class="register-meta">
+            <dl>
+              <dt>조사기관</dt><dd>${m.institution}</dd>
+              <dt>연구책임</dt><dd>${m.researcher}</dd>
+              <dt>담당</dt><dd>${m.contactName} (${m.contact})</dd>
+            </dl>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const sync = () => {
+      this.regDraft.email = this.container.querySelector('#reg-email').value;
+      this.regDraft.name = this.container.querySelector('#reg-name').value;
+      this.regDraft.org = this.container.querySelector('#reg-org').value;
+      this.regDraft.category = this.container.querySelector('#reg-category').value;
+      this.regDraft.consent_pi = this.container.querySelector('#reg-consent').checked;
+      this.saveRegisterDraft();
+    };
+    ['#reg-email', '#reg-name', '#reg-org'].forEach(s => {
+      this.container.querySelector(s)?.addEventListener('input', sync);
+    });
+    this.container.querySelector('#reg-category')?.addEventListener('change', sync);
+    this.container.querySelector('#reg-consent')?.addEventListener('change', sync);
+    this.container.querySelector('#btn-reg-submit')?.addEventListener('click', () => {
+      sync();
+      this.submitRegistration();
+    });
+  }
+
+  async submitRegistration() {
+    const d = this.regDraft;
+    const errors = [];
+    const email = (d.email || '').trim();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.push('올바른 이메일을 입력해 주십시오.');
+    if (!(d.name || '').trim()) errors.push('성명을 입력해 주십시오.');
+    if (!d.consent_pi) errors.push('개인정보 수집·이용에 동의해 주셔야 참여하실 수 있습니다.');
+    if (errors.length) {
+      this.regError = errors.join(' / ');
+      this.render();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    this.regError = '';
+    this.regSubmitting = true;
+    this.render();
+
+    try {
+      const payload = {
+        email: email,
+        name: (d.name || '').trim(),
+        org: (d.org || '').trim(),
+        category: (d.category || '').trim(),
+        consent_pi: true,
+      };
+      const res = await fetch(`${API_BASE}/api/survey/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `등록 실패 (${res.status})`);
+      }
+      const data = await res.json();
+      this.clearRegisterDraft();
+
+      if (data.has_responded) {
+        // 동일 이메일이 이미 응답을 완료한 상태 — 명시적 안내 화면으로 분기.
+        const url = new URL(window.location.href);
+        url.searchParams.set('token', data.token);
+        this.alreadyRespondedReviewUrl = url.toString();
+        this.gate = GATE.ALREADY_RESPONDED;
+        this.regSubmitting = false;
+        this.render();
+        return;
+      }
+
+      // 미응답이면 발급 토큰 URL로 이동 — 페이지 reload하여 토큰 인증 흐름 진입.
+      const url = new URL(window.location.href);
+      url.searchParams.set('token', data.token);
+      window.location.href = url.toString();
+    } catch (e) {
+      this.regError = e.message || '등록 중 오류가 발생했습니다. 잠시 후 다시 시도해 주십시오.';
+      this.regSubmitting = false;
+      this.render();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }
+
+  // ── Already Responded (자가등록 dedup → 이미 응답 완료) ──
+  renderAlreadyResponded() {
+    const m = SURVEY_META;
+    const reviewUrl = this.alreadyRespondedReviewUrl || '#';
+    this.container.innerHTML = `
+      <div class="survey-container">
+        <div class="resubmit-choice">
+          <div class="resubmit-badge">제출 완료</div>
+          <h1>이미 응답을 완료하셨습니다</h1>
+          <p class="resubmit-msg">
+            입력하신 이메일로 <strong>이전에 본 설문에 응답한 기록</strong>이 확인되었습니다.<br>
+            동일한 응답자에 대해 중복 응답을 받지 않습니다.
+          </p>
+          <p style="font-size:13px;color:#666;margin:20px 0 0;line-height:1.7">
+            제출하신 응답을 확인하거나 수정하시려면 아래 버튼을 눌러 응답 페이지로 이동해 주십시오.<br>
+            받으신 안내 메일이 있다면 그 메일의 링크를 사용하셔도 됩니다.
+          </p>
+          <div class="resubmit-actions" style="margin-top:24px">
+            <a class="btn btn-next" href="${reviewUrl}">내 응답 확인·수정</a>
+          </div>
+          <div class="access-denied-meta" style="margin-top:32px">
+            <dl>
+              <dt>조사기관</dt><dd>${m.institution}</dd>
+              <dt>연구책임</dt><dd>${m.researcher}</dd>
+              <dt>담당</dt><dd>${m.contactName} (${m.contact})</dd>
+            </dl>
+          </div>
+        </div>
+      </div>
+    `;
   }
 
   // ── Status Bar (공통 상단) ──

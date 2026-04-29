@@ -11,7 +11,26 @@ class Participant(BaseModel):
     category: str = ""
     field: str = ""
     phone: str = ""
+    # 등록 출처: imported(엑셀 import) | self(공개 링크 자가등록)
+    source: str = "imported"
+    # 자가등록 시 개인정보 수집·이용 동의 — 자가등록자만 채워짐
+    consent_pi: bool = False
+    consent_pi_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class SelfRegisterRequest(BaseModel):
+    """공개 단일 링크 자가등록 페이로드.
+
+    필수: email(완료 메일·dedup), name, consent_pi.
+    선택: org, category(SQ1 분류와 동일 옵션 권장).
+    사례품 동의는 응답 제출 시점에 받으므로 자가등록 단계에서는 받지 않는다.
+    """
+    email: str
+    name: str
+    org: str = ""
+    category: str = ""
+    consent_pi: bool
 
 
 class ParticipantOut(BaseModel):

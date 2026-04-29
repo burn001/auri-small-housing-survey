@@ -1,9 +1,13 @@
 from fastapi import APIRouter, Request, HTTPException
 from datetime import datetime
-from models import ResponseSubmit, ResponseRecord, ParticipantUpdate
+import re
+import uuid
+from models import ResponseSubmit, ResponseRecord, ParticipantUpdate, SelfRegisterRequest
 from services.db import get_db
 
 router = APIRouter(prefix="/api", tags=["responses"])
+
+EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 
 @router.get("/survey/{token}")
@@ -135,6 +139,72 @@ async def submit_response(body: ResponseSubmit, request: Request):
     )
     await db.responses.insert_one(record.model_dump())
     return {"status": "created", "token": body.token}
+
+
+# ── 공개 자가등록 (No Auth) ──
+@router.post("/survey/register")
+async def self_register(body: SelfRegisterRequest, request: Request):
+    """공개 링크에서 응답자가 직접 정보를 입력하고 토큰을 발급받는다.
+
+    이메일 dedup: 동일 이메일이 imported 또는 self로 이미 등록되어 있으면
+    그 토큰을 그대로 반환하고, 응답 완료 여부(has_responded)를 함께 응답한다.
+    클라이언트는 has_responded=true이면 '이미 응답하셨습니다' 안내 화면을 띄우고,
+    false이면 토큰 URL로 진입시켜 설문을 이어 작성하도록 한다.
+    """
+    email = (body.email or "").strip().lower()
+    name = (body.name or "").strip()
+    if not EMAIL_RE.match(email):
+        raise HTTPException(400, "올바른 이메일을 입력해 주십시오.")
+    if not name:
+        raise HTTPException(400, "이름을 입력해 주십시오.")
+    if not body.consent_pi:
+        raise HTTPException(400, "개인정보 수집·이용에 동의해 주셔야 참여하실 수 있습니다.")
+
+    now = datetime.utcnow()
+    ip = request.client.host if request.client else ""
+    ua = request.headers.get("user-agent", "")
+
+    db = get_db()
+    existing = await db.participants.find_one({"email": email})
+
+    base_fields = {
+        "email": email,
+        "name": name,
+        "org": (body.org or "").strip(),
+        "category": (body.category or "").strip(),
+        "consent_pi": True,
+        "consent_pi_at": now,
+        "register_ip": ip,
+        "register_ua": ua,
+        "register_updated_at": now,
+    }
+
+    if existing:
+        token = existing["token"]
+        # 기존 등록자의 source는 보존 (첫 진입 채널 유지). imported였던 응답자가
+        # 자가등록 페이지로 들어와도 imported로 남는다.
+        base_fields["source"] = existing.get("source", "imported")
+        await db.participants.update_one({"token": token}, {"$set": base_fields})
+        status = "updated"
+    else:
+        token = uuid.uuid4().hex[:16]
+        base_fields.update({
+            "token": token,
+            "source": "self",
+            "field": "",
+            "phone": "",
+            "created_at": now,
+        })
+        await db.participants.insert_one(base_fields)
+        status = "created"
+
+    has_responded = (await db.responses.find_one({"token": token}, {"_id": 1})) is not None
+
+    return {
+        "status": status,
+        "token": token,
+        "has_responded": has_responded,
+    }
 
 
 @router.get("/responses/{token}")

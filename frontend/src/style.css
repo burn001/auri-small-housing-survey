@@ -914,6 +914,141 @@ body {
   color: var(--c-text-tertiary);
 }
 
+/* ── Register (자가등록 폼) ── */
+.register-shell {
+  max-width: 640px;
+  margin: 32px auto;
+  padding: 0 16px;
+}
+.register-institution {
+  font-size: 12px;
+  color: var(--c-text-tertiary);
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+.register-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--c-text);
+  text-align: center;
+  margin: 6px 0 4px;
+}
+.register-subtitle {
+  font-size: 14px;
+  color: var(--c-text-secondary);
+  text-align: center;
+  margin-bottom: 24px;
+}
+.register-card {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+  margin-bottom: 16px;
+}
+.register-card h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--c-text);
+  margin: 0 0 12px;
+}
+.register-section {
+  margin-bottom: 14px;
+}
+.register-section:last-child {
+  margin-bottom: 0;
+}
+.register-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--c-text);
+  margin-bottom: 4px;
+}
+.register-req {
+  color: #dc2626;
+  font-weight: 700;
+}
+.register-hint {
+  font-size: 12px;
+  color: var(--c-text-tertiary);
+  margin: 0 0 6px;
+  line-height: 1.55;
+}
+.register-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--c-border);
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+  background: #fff;
+  color: var(--c-text);
+}
+.register-input:focus {
+  outline: none;
+  border-color: var(--c-accent);
+}
+.register-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--c-text);
+  cursor: pointer;
+  padding: 4px 0;
+}
+.register-consent input[type="checkbox"] {
+  margin-top: 2px;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.register-error {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 13px;
+  margin: 0 0 14px;
+}
+.register-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 22px 0 14px;
+}
+.register-actions .btn {
+  min-width: 220px;
+  justify-content: center;
+}
+.register-submitting {
+  font-size: 12px;
+  color: var(--c-text-tertiary);
+}
+.register-meta {
+  margin-top: 24px;
+  font-size: 12px;
+  color: var(--c-text-tertiary);
+}
+.register-meta dl {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: 4px 12px;
+  margin: 0;
+}
+.register-meta dt {
+  color: var(--c-text-tertiary);
+  font-weight: 500;
+}
+.register-meta dd {
+  color: var(--c-text-secondary);
+  margin: 0;
+}
+
 /* ── Participant Card ── */
 .participant-card {
   background: var(--c-surface);
