@@ -21,14 +21,19 @@ SURVEY_LIMIT = 300
 
 
 async def _get_completed_count(db) -> int:
-    """source=staff를 제외한 submitted 응답 수 (사전등록·자가등록 합산)."""
-    staff_tokens = [
+    """정원 카운트 — 직원 테스트(source=staff)와 내부 연구진(category=연구진)을 제외한
+    submitted 응답 수. 사전등록·자가등록 합산.
+    """
+    excluded_tokens = [
         p["token"]
-        async for p in db.participants.find({"source": "staff"}, {"token": 1, "_id": 0})
+        async for p in db.participants.find(
+            {"$or": [{"source": "staff"}, {"category": "연구진"}]},
+            {"token": 1, "_id": 0},
+        )
     ]
     return await db.responses.count_documents({
         "submitted_at": {"$ne": None},
-        "token": {"$nin": staff_tokens},
+        "token": {"$nin": excluded_tokens},
     })
 
 

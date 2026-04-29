@@ -34,34 +34,60 @@ async def whoami(x_admin_key: Optional[str] = Header(None)):
 async def get_stats(
     x_admin_key: Optional[str] = Header(None),
     include_staff: bool = False,
+    include_reviewer: bool = False,
 ):
-    """기본은 직원 테스트(source=staff) 제외 통계. include_staff=true면 모두 포함."""
+    """대시보드 통계.
+    기본은 직원 테스트(source=staff) + 내부 연구진(category=연구진) 모두 제외 — 분석 의미가 있는 수치.
+    include_staff·include_reviewer 플래그로 각각 포함시켜 보고 싶을 때 사용.
+    by_category에는 연구진/staff 모두 그대로 노출 (분포 정보).
+    """
     _check_admin(x_admin_key)
     db = get_db()
 
-    base_match: dict = {} if include_staff else {"source": {"$ne": "staff"}}
-    total_p = await db.participants.count_documents(base_match)
-    # 응답 카운트는 participants를 기준으로 staff를 제외하기 위해 join이 필요.
-    if include_staff:
-        total_r = await db.responses.count_documents({})
+    # 분석 대상에서 제외할 token 집합 — 카운트·응답률 계산에서 빠져야 하는 응답자.
+    exclude_or = []
+    if not include_staff:
+        exclude_or.append({"source": "staff"})
+    if not include_reviewer:
+        exclude_or.append({"category": "연구진"})
+    if exclude_or:
+        excluded_tokens = [
+            d["token"]
+            async for d in db.participants.find(
+                {"$or": exclude_or}, {"token": 1, "_id": 0}
+            )
+        ]
+        token_filter = {"token": {"$nin": excluded_tokens}}
+        # participants는 source/category 기준으로 직접 필터
+        participant_filter = {"$nor": exclude_or}
     else:
-        staff_tokens_cur = db.participants.find({"source": "staff"}, {"token": 1, "_id": 0})
-        staff_tokens = [d["token"] async for d in staff_tokens_cur]
-        total_r = await db.responses.count_documents(
-            {"token": {"$nin": staff_tokens}} if staff_tokens else {}
-        )
+        token_filter = {}
+        participant_filter = {}
 
-    # 별도로 직원 테스트 응답 수치 — 대시보드 카드에 함께 표시한다.
+    total_p = await db.participants.count_documents(participant_filter)
+    total_r = await db.responses.count_documents(token_filter)
+
+    # 별도 카운트 — 대시보드 카드에 분리 표시
     staff_p = await db.participants.count_documents({"source": "staff"})
-    staff_tokens_for_resp = [
-        d["token"] async for d in db.participants.find({"source": "staff"}, {"token": 1, "_id": 0})
+    staff_tokens = [
+        d["token"]
+        async for d in db.participants.find({"source": "staff"}, {"token": 1, "_id": 0})
     ]
     staff_r = await db.responses.count_documents(
-        {"token": {"$in": staff_tokens_for_resp}} if staff_tokens_for_resp else {"token": {"$in": []}}
+        {"token": {"$in": staff_tokens}} if staff_tokens else {"token": {"$in": []}}
     )
 
+    reviewer_p = await db.participants.count_documents({"category": "연구진"})
+    reviewer_tokens = [
+        d["token"]
+        async for d in db.participants.find({"category": "연구진"}, {"token": 1, "_id": 0})
+    ]
+    reviewer_r = await db.responses.count_documents(
+        {"token": {"$in": reviewer_tokens}} if reviewer_tokens else {"token": {"$in": []}}
+    )
+
+    # 카테고리별 분포는 모든 응답자(staff·연구진 포함) 그대로 보여 준다 — 분포 정보이므로.
     pipeline = [
-        {"$match": base_match} if base_match else {"$match": {}},
         {"$lookup": {
             "from": "responses",
             "localField": "token",
@@ -91,6 +117,9 @@ async def get_stats(
         "staff_participants": staff_p,
         "staff_responses": staff_r,
         "staff_excluded": not include_staff,
+        "reviewer_participants": reviewer_p,
+        "reviewer_responses": reviewer_r,
+        "reviewer_excluded": not include_reviewer,
     }
 
 
