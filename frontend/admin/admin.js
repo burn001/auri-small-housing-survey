@@ -330,11 +330,37 @@ async function runSend(tokens, type = 'invite') {
       method: 'POST',
       body: JSON.stringify({ tokens, type }),
     });
-    toast(`발송 완료 [${type}]: ${result.sent}건 성공${result.failed ? `, ${result.failed}건 실패` : ''}`);
+    showSendResult(result);
     await loadParticipants(pPage);
   } catch (e) {
     toast('발송 실패: ' + e.message, 'error');
   }
+}
+
+function showSendResult(result) {
+  const errors = result.errors || [];
+  const headline = `발송 완료 [${result.type}]: ${result.sent}건 성공${result.failed ? `, ${result.failed}건 실패` : ''}${result.skipped ? `, ${result.skipped}건 누락(존재하지 않는 토큰)` : ''}`;
+  if (result.failed === 0 && result.skipped === 0) {
+    toast(headline);
+    return;
+  }
+  const errRows = errors.map(e =>
+    `<tr><td style="font-size:11px;font-family:monospace">${e.token}</td>
+         <td style="font-size:12px">${e.email}</td>
+         <td style="font-size:11px;color:#c00;word-break:break-all">${(e.error || '').slice(0, 200)}</td></tr>`
+  ).join('');
+  const body = `
+    <div style="padding:14px 18px">
+      <p style="margin:0 0 12px;font-size:14px"><b>${headline}</b></p>
+      <p style="margin:0 0 8px;font-size:12px;color:#666">batch: <code>${result.batch_id}</code> · subject: ${result.subject || ''}</p>
+      ${errRows ? `<table style="width:100%;border-collapse:collapse">
+        <thead><tr style="background:#f3f4f6"><th style="text-align:left;padding:6px 8px;font-size:12px">토큰</th><th style="text-align:left;padding:6px 8px;font-size:12px">이메일</th><th style="text-align:left;padding:6px 8px;font-size:12px">오류</th></tr></thead>
+        <tbody>${errRows}</tbody>
+      </table>` : ''}
+    </div>`;
+  document.getElementById('log-modal-title').textContent = '발송 결과';
+  document.getElementById('log-modal-body').innerHTML = body;
+  document.getElementById('log-modal').style.display = 'flex';
 }
 
 // ── Email Log Modal ──
@@ -482,10 +508,16 @@ async function customPreview() {
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const html = await res.text();
-    if (_previewBlobUrl) URL.revokeObjectURL(_previewBlobUrl);
-    _previewBlobUrl = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
-    const wrap = document.getElementById('preview-body');
-    wrap.innerHTML = `<div style="padding:8px 0;font-size:12px;color:#666">\uc81c\ubaa9: <b>${subject || '(\ube48 \uc81c\ubaa9)'}</b></div><iframe src="${_previewBlobUrl}"></iframe>`;
+    const sampleBase = tokens.length > 0
+      ? `\uc120\ud0dd\ub41c \uccab \ub300\uc0c1\uc790 (${pCache.find(p => p.token === tokens[0])?.name || tokens[0]})`
+      : '\uc0d8\ud50c (\ud64d\uae38\ub3d9/\uc608\uc2dc \uae30\uad00)';
+    const meta = `<div style="padding:10px 14px;font-size:12px;color:#444;background:#f9fafb;border-bottom:1px solid #eee">
+        <div><b>\ud0c0\uc785</b>: \uc790\uc720 \ubcf8\ubb38 (custom)</div>
+        <div><b>\uc81c\ubaa9</b>: ${subject || '<span style="color:#c00">(\ubbf8\uc785\ub825)</span>'}</div>
+        <div><b>\uce58\ud658 \uae30\uc900</b>: ${sampleBase}</div>
+      </div>`;
+    document.getElementById('preview-body').innerHTML =
+      meta + `<iframe srcdoc="${html.replace(/"/g, '&quot;')}" style="width:100%;height:70vh;border:0;background:#fff"></iframe>`;
     document.getElementById('preview-modal').style.display = 'flex';
   } catch (e) {
     document.getElementById('custom-error').textContent = '\ubbf8\ub9ac\ubcf4\uae30 \uc2e4\ud328: ' + e.message;
@@ -508,8 +540,8 @@ async function customSend() {
       method: 'POST',
       body: JSON.stringify({ tokens, subject, body_html }),
     });
-    toast(`\ubc1c\uc1a1 \uc644\ub8cc: ${result.sent}\uac74 \uc131\uacf5${result.failed ? `, ${result.failed}\uac74 \uc2e4\ud328` : ''}`);
     closeCustomCompose();
+    showSendResult({ ...result, subject });
     await loadParticipants(pPage);
   } catch (e) {
     errEl.textContent = '\ubc1c\uc1a1 \uc2e4\ud328: ' + e.message;
@@ -517,18 +549,44 @@ async function customSend() {
 }
 
 // ── Email Preview Modal ──
-let _previewBlobUrl = null;
+const TYPE_LABEL = { invite: '① 초대 (invite)', reminder: '② 추가요청 (reminder)', deadline: '③ 마감알림 (deadline)' };
+
 async function previewEmail() {
+  // 첫 번째 선택된 토큰 기준으로 (없으면 샘플) + type별 미리보기 (선택)
+  const firstSelected = pSelected.size > 0 ? [...pSelected][0] : null;
+  let chosenType = 'invite';
+  if (pSelected.size > 0) {
+    const t = prompt(
+      '미리볼 메일 타입을 선택하세요\n' +
+      '  1 = 초대 (invite)\n' +
+      '  2 = 추가요청 (reminder)\n' +
+      '  3 = 마감알림 (deadline)\n\n' +
+      '취소하려면 빈 값',
+      '1'
+    );
+    if (!t) return;
+    chosenType = ({ '1': 'invite', '2': 'reminder', '3': 'deadline' })[t.trim()] || 'invite';
+  }
   try {
-    const res = await fetch(API + '/api/admin/email/preview', {
-      method: 'POST',
-      headers: { 'X-Admin-Key': ADMIN_KEY, 'Content-Type': 'application/json' },
+    const params = new URLSearchParams({ type: chosenType });
+    if (firstSelected) params.set('token', firstSelected);
+    const res = await fetch(API + '/api/admin/email/preview?' + params.toString(), {
+      headers: { 'X-Admin-Key': ADMIN_KEY },
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const html = await res.text();
-    if (_previewBlobUrl) URL.revokeObjectURL(_previewBlobUrl);
-    _previewBlobUrl = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
-    document.getElementById('preview-body').innerHTML = `<iframe src="${_previewBlobUrl}"></iframe>`;
+    const subjectGuess = {
+      invite: '[AURI] 소규모(비아파트) 주거 제도개선 전문가 설문 참여 요청',
+      reminder: '[AURI] 소규모 주거 전문가 설문 응답 추가 요청 (미응답자 재안내)',
+      deadline: '[AURI] 소규모 주거 전문가 설문 — 마감 임박 안내',
+    }[chosenType];
+    const meta = `<div style="padding:10px 14px;font-size:12px;color:#444;background:#f9fafb;border-bottom:1px solid #eee">
+        <div><b>타입</b>: ${TYPE_LABEL[chosenType] || chosenType}</div>
+        <div><b>예상 제목</b>: ${subjectGuess}</div>
+        <div><b>치환 기준</b>: ${firstSelected ? '선택된 첫 대상자' : '샘플 (홍길동/예시 기관)'}</div>
+      </div>`;
+    document.getElementById('preview-body').innerHTML =
+      meta + `<iframe srcdoc="${html.replace(/"/g, '&quot;')}" style="width:100%;height:70vh;border:0;background:#fff"></iframe>`;
     document.getElementById('preview-modal').style.display = 'flex';
   } catch (e) {
     toast('미리보기 실패: ' + e.message, 'error');

@@ -5,7 +5,10 @@ from typing import Optional
 from datetime import datetime, timezone
 from uuid import uuid4
 from services.db import get_db
-from services.email_service import render_email, render_custom, send_email
+from services.email_service import (
+    render_email, render_custom, send_email,
+    email_subject_for, _normalize_survey_url,
+)
 from config import get_settings
 import logging
 
@@ -262,7 +265,7 @@ async def delete_participant(token: str, x_admin_key: Optional[str] = Header(Non
 
 class EmailSendRequest(BaseModel):
     tokens: list[str]
-    subject: str = "[AURI] 소규모(비아파트) 주거 제도개선 전문가 설문 참여 요청"
+    subject: Optional[str] = None  # None 이면 type 기반 자동 subject
     type: str = "invite"  # invite | reminder | deadline | custom
 
 
@@ -272,12 +275,25 @@ class EmailCustomSendRequest(BaseModel):
     body_html: str  # {{name}} {{org}} {{survey_url}} 치환
 
 
-@router.post("/email/preview", response_class=HTMLResponse)
-async def email_preview(x_admin_key: Optional[str] = Header(None)):
+@router.get("/email/preview", response_class=HTMLResponse)
+async def email_preview(
+    x_admin_key: Optional[str] = Header(None),
+    type: str = "invite",
+    token: Optional[str] = None,
+):
+    """미리보기 — token 지정시 해당 참가자 데이터로 치환, 미지정 시 샘플."""
     _check_admin(x_admin_key)
     s = get_settings()
-    url = f"{s.SURVEY_BASE_URL}/?token=SAMPLE_TOKEN"
-    return render_email("홍길동", "예시 기관", url)
+    name, org = "홍길동", "예시 기관"
+    survey_url = _normalize_survey_url(s.SURVEY_BASE_URL, "SAMPLE_TOKEN")
+    if token:
+        db = get_db()
+        p = await db.participants.find_one({"token": token})
+        if p:
+            name = p.get("name", "") or name
+            org = p.get("org", "") or org
+            survey_url = _normalize_survey_url(s.SURVEY_BASE_URL, p["token"])
+    return render_email(name, org, survey_url, type)
 
 
 @router.post("/email/send")
@@ -291,11 +307,13 @@ async def send_survey_emails(
         raise HTTPException(500, "Gmail 설정이 없습니다.")
 
     email_type = body.type if body.type in ALLOWED_EMAIL_TYPES else "invite"
+    subject = email_subject_for(email_type, body.subject)
     batch_id = uuid4().hex[:12]
     db = get_db()
     results = {
         "batch_id": batch_id,
         "type": email_type,
+        "subject": subject,
         "sent": 0,
         "failed": 0,
         "skipped": 0,
@@ -308,8 +326,8 @@ async def send_survey_emails(
             results["skipped"] += 1
             continue
 
-        survey_url = f"{s.SURVEY_BASE_URL}/?token={token}"
-        html = render_email(p.get("name", ""), p.get("org", ""), survey_url)
+        survey_url = _normalize_survey_url(s.SURVEY_BASE_URL, token)
+        html = render_email(p.get("name", ""), p.get("org", ""), survey_url, email_type)
         now = datetime.now(timezone.utc)
 
         log_doc = {
@@ -320,14 +338,14 @@ async def send_survey_emails(
             "org": p.get("org", ""),
             "category": p.get("category", ""),
             "type": email_type,
-            "subject": body.subject,
+            "subject": subject,
             "admin_email": admin.get("email", ""),
             "admin_name": admin.get("name", ""),
             "sent_at": now,
         }
 
         try:
-            send_email(p["email"], body.subject, html)
+            send_email(p["email"], subject, html)
             log_doc.update({"status": "sent", "error": ""})
             await db.email_logs.insert_one(log_doc)
             await db.participants.update_one(
@@ -400,7 +418,7 @@ async def send_custom_emails(
             results["skipped"] += 1
             continue
 
-        survey_url = f"{s.SURVEY_BASE_URL}/?token={token}"
+        survey_url = _normalize_survey_url(s.SURVEY_BASE_URL, token)
         html = render_custom(p.get("name", ""), p.get("org", ""), survey_url, body_html)
         now = datetime.now(timezone.utc)
 
@@ -465,14 +483,14 @@ async def custom_email_preview(
     s = get_settings()
     name = "홍길동"
     org = "예시 기관"
-    survey_url = f"{s.SURVEY_BASE_URL}/?token=SAMPLE_TOKEN"
+    survey_url = _normalize_survey_url(s.SURVEY_BASE_URL, "SAMPLE_TOKEN")
     if body.tokens:
         db = get_db()
         p = await db.participants.find_one({"token": body.tokens[0]})
         if p:
             name = p.get("name", "") or name
             org = p.get("org", "") or org
-            survey_url = f"{s.SURVEY_BASE_URL}/?token={p['token']}"
+            survey_url = _normalize_survey_url(s.SURVEY_BASE_URL, p["token"])
     return render_custom(name, org, survey_url, body.body_html or "")
 
 
