@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>설문 관리자 | AURI 소규모 주거 전문가 설문</title>
+  <title>소규모 주거 전문가 설문 Admin | AURI</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="admin.css">
@@ -18,17 +18,17 @@
     <input type="password" id="admin-key-input" placeholder="Admin Key" autofocus>
     <button onclick="doLogin()">로그인</button>
     <p id="login-error" style="color:var(--red);font-size:12px;margin-top:8px"></p>
+    <p style="font-size:11px;color:#999;margin-top:12px">※ URL <code>?key=…</code> 로 접속 시 자동 로그인됩니다.</p>
   </div>
 </div>
 
 <!-- App -->
 <div id="app" class="app" style="display:none">
   <nav class="sidebar">
-    <h1>Survey Admin</h1>
-    <p class="subtitle">AURI 소규모 주거 전문가 설문</p>
+    <h1>Small Housing Survey</h1>
+    <p class="subtitle">소규모(비아파트) 주거 제도개선</p>
     <a class="nav-item active" data-page="dashboard">대시보드</a>
-    <a class="nav-item" data-page="participants">대상자 관리</a>
-    <a class="nav-item" data-page="email">이메일 발송</a>
+    <a class="nav-item" data-page="participants">대상자 &amp; 이메일</a>
     <a class="nav-item" data-page="responses">응답 조회</a>
     <a class="nav-item" style="margin-top:auto;color:#666;font-size:12px" onclick="logout()">로그아웃</a>
   </nav>
@@ -41,65 +41,69 @@
       <div id="cat-bars" class="cat-bar"></div>
     </div>
 
-    <!-- Participants -->
+    <!-- Participants & Email -->
     <div id="page-participants" class="page">
-      <h2 class="page-title">대상자 관리</h2>
+      <h2 class="page-title">대상자 &amp; 이메일</h2>
       <div class="table-wrap">
         <div class="table-toolbar">
-          <input type="text" id="p-search" placeholder="이름 또는 소속 검색...">
+          <input type="text" id="p-search" placeholder="이름·소속·이메일 검색...">
           <select id="p-category">
-            <option value="">전체 직군</option>
-            <option value="설계">설계</option>
-            <option value="시공">시공</option>
-            <option value="유지관리">유지관리</option>
-            <option value="건축행정">건축행정</option>
-            <option value="기타">기타</option>
-            <option value="미분류">미분류</option>
+            <option value="">전체 구분</option>
+            <option value="01.중앙정부">01.중앙정부</option>
+            <option value="02.국책연구원">02.국책연구원</option>
+            <option value="03.시도연구원">03.시도연구원</option>
+            <option value="04.공사·신탁">04.공사·신탁</option>
+            <option value="05.광역지자체">05.광역지자체</option>
+            <option value="06.기초지자체">06.기초지자체</option>
+            <option value="07.학계">07.학계</option>
+            <option value="08.협회·학회">08.협회·학회</option>
+            <option value="09.건축설계사무소">09.건축설계사무소</option>
+            <option value="10.건설사·디벨로퍼">10.건설사·디벨로퍼</option>
+            <option value="11.부동산·도시운영">11.부동산·도시운영</option>
+            <option value="12.구조설계">12.구조설계</option>
+            <option value="99.기타">99.기타</option>
           </select>
-          <button class="btn btn-outline btn-sm" onclick="exportParticipantLinks()">링크 목록 CSV</button>
+          <select id="p-send-status">
+            <option value="">발송: 전체</option>
+            <option value="unsent">미발송만</option>
+            <option value="sent">발송완료만</option>
+          </select>
+          <select id="p-resp-status">
+            <option value="">응답: 전체</option>
+            <option value="unresponded">미응답만</option>
+            <option value="responded">응답완료만</option>
+          </select>
+          <button class="btn btn-blue btn-sm" id="btn-send" disabled onclick="sendSelected()">선택 발송 (0)</button>
+          <button class="btn btn-outline btn-sm" id="btn-custom-send" disabled onclick="openCustomCompose()">자유 본문 발송 (0)</button>
+          <button class="btn btn-outline btn-sm" onclick="sendToUnresponded()">미응답자 재발송</button>
+          <button class="btn btn-outline btn-sm" onclick="previewEmail()">이메일 미리보기</button>
+          <button class="btn btn-outline btn-sm" onclick="exportParticipantLinks()">링크 CSV</button>
+          <button class="btn btn-outline btn-sm" onclick="openAddParticipant()">+ 대상자 추가</button>
         </div>
         <div id="p-table"></div>
         <div id="p-pagination" class="pagination"></div>
       </div>
     </div>
 
-    <!-- Email -->
-    <div id="page-email" class="page">
-      <h2 class="page-title">이메일 발송</h2>
-      <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
-        <select id="e-category">
-          <option value="">전체 직군</option>
-          <option value="설계">설계</option>
-          <option value="시공">시공</option>
-          <option value="유지관리">유지관리</option>
-          <option value="건축행정">건축행정</option>
-        </select>
-        <select id="e-filter">
-          <option value="unsent">미발송만</option>
-          <option value="all">전체</option>
-          <option value="sent">발송완료만</option>
-        </select>
-        <button class="btn btn-outline btn-sm" onclick="loadEmailTargets()">조회</button>
-        <button class="btn btn-blue btn-sm" id="btn-send" disabled onclick="sendEmails()">선택 대상자에게 발송</button>
-        <button class="btn btn-outline btn-sm" onclick="previewEmail()">미리보기</button>
-      </div>
-      <div class="table-wrap">
-        <div id="e-table"></div>
-      </div>
-      <div id="e-status" style="margin-top:12px;font-size:13px;color:var(--text3)"></div>
-      <div id="email-preview" class="email-preview" style="display:none"></div>
-    </div>
-
     <!-- Responses -->
     <div id="page-responses" class="page">
       <h2 class="page-title">응답 조회</h2>
-      <div style="display:flex;gap:12px;margin-bottom:16px">
+      <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
         <select id="r-category">
-          <option value="">전체 직군</option>
-          <option value="설계">설계</option>
-          <option value="시공">시공</option>
-          <option value="유지관리">유지관리</option>
-          <option value="건축행정">건축행정</option>
+          <option value="">전체 구분</option>
+          <option value="01.중앙정부">01.중앙정부</option>
+          <option value="02.국책연구원">02.국책연구원</option>
+          <option value="03.시도연구원">03.시도연구원</option>
+          <option value="04.공사·신탁">04.공사·신탁</option>
+          <option value="05.광역지자체">05.광역지자체</option>
+          <option value="06.기초지자체">06.기초지자체</option>
+          <option value="07.학계">07.학계</option>
+          <option value="08.협회·학회">08.협회·학회</option>
+          <option value="09.건축설계사무소">09.건축설계사무소</option>
+          <option value="10.건설사·디벨로퍼">10.건설사·디벨로퍼</option>
+          <option value="11.부동산·도시운영">11.부동산·도시운영</option>
+          <option value="12.구조설계">12.구조설계</option>
+          <option value="99.기타">99.기타</option>
         </select>
         <button class="btn btn-outline btn-sm" onclick="loadResponses()">조회</button>
         <button class="btn btn-primary btn-sm" onclick="downloadCSV()">CSV 내보내기</button>
@@ -111,7 +115,118 @@
   </div>
 </div>
 
+<!-- Email Preview Modal -->
+<div id="preview-modal" class="modal-backdrop" style="display:none" onclick="closePreview(event)">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <span>이메일 미리보기</span>
+      <button class="modal-close" onclick="closePreview()" aria-label="닫기">&times;</button>
+    </div>
+    <div class="modal-body" id="preview-body"></div>
+  </div>
+</div>
+
+<!-- Response Detail Modal -->
+<div id="resp-modal" class="modal-backdrop" style="display:none" onclick="closeRespModal(event)">
+  <div class="modal-box" onclick="event.stopPropagation()" style="width:1000px;max-width:96vw">
+    <div class="modal-header">
+      <span id="resp-modal-title">응답 상세</span>
+      <button class="modal-close" onclick="closeRespModal()" aria-label="닫기">&times;</button>
+    </div>
+    <div class="modal-body" id="resp-modal-body" style="max-height:80vh;overflow:auto"></div>
+  </div>
+</div>
+
+<!-- Custom Email Compose Modal -->
+<div id="custom-modal" class="modal-backdrop" style="display:none" onclick="closeCustomCompose(event)">
+  <div class="modal-box" onclick="event.stopPropagation()" style="width:920px;max-width:96vw">
+    <div class="modal-header">
+      <span id="custom-modal-title">자유 본문 이메일 발송</span>
+      <button class="modal-close" onclick="closeCustomCompose()" aria-label="닫기">&times;</button>
+    </div>
+    <div class="modal-body" id="custom-modal-body" style="max-height:80vh;overflow:auto;padding:20px 24px">
+      <div style="margin-bottom:14px;font-size:13px;color:#555">
+        선택한 응답자 <span id="custom-recipient-count" style="font-weight:700;color:#1e293b">0</span>명에게 발송됩니다.
+        본문에 <code>{{name}}</code>, <code>{{org}}</code>, <code>{{survey_url}}</code> 치환자를 사용할 수 있습니다.
+      </div>
+      <label style="display:block;font-size:12px;color:#444;margin-bottom:6px">제목</label>
+      <input type="text" id="custom-subject" placeholder="예) [AURI] 소규모(비아파트) 주거 제도개선 전문가 설문 — 추가 의견 요청"
+             style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:4px;font-size:13px;margin-bottom:14px">
+      <label style="display:block;font-size:12px;color:#444;margin-bottom:6px">본문 (HTML 또는 일반 텍스트)</label>
+      <textarea id="custom-body" rows="12" placeholder="안녕하세요 {{name}}님,&#10;&#10;설문 응답에 감사드립니다.&#10;&#10;아래 링크에서 다시 확인하실 수 있습니다.&#10;{{survey_url}}"
+             style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:4px;font-size:13px;font-family:'Noto Sans KR',sans-serif;line-height:1.6;resize:vertical"></textarea>
+      <div id="custom-recipients-preview" style="margin-top:12px;font-size:11px;color:#666;max-height:120px;overflow:auto;padding:8px 10px;background:#f9fafb;border-radius:4px"></div>
+      <div id="custom-error" style="color:#b91c1c;font-size:12px;margin-top:8px"></div>
+      <div style="display:flex;gap:8px;margin-top:18px;justify-content:flex-end">
+        <button class="btn btn-outline btn-sm" onclick="customPreview()">미리보기</button>
+        <button class="btn btn-blue btn-sm" onclick="customSend()">발송</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Email Log Modal -->
+<div id="log-modal" class="modal-backdrop" style="display:none" onclick="closeLogModal(event)">
+  <div class="modal-box" onclick="event.stopPropagation()" style="width:900px;max-width:95vw">
+    <div class="modal-header">
+      <span id="log-modal-title">이메일 발송 이력</span>
+      <button class="modal-close" onclick="closeLogModal()" aria-label="닫기">&times;</button>
+    </div>
+    <div class="modal-body" id="log-modal-body" style="max-height:70vh;overflow:auto"></div>
+  </div>
+</div>
+
+<!-- Add Participant Modal -->
+<div id="add-modal" class="modal-backdrop" style="display:none" onclick="closeAddParticipant(event)">
+  <div class="modal-box" onclick="event.stopPropagation()" style="width:520px;max-width:96vw">
+    <div class="modal-header">
+      <span>대상자 추가</span>
+      <button class="modal-close" onclick="closeAddParticipant()" aria-label="닫기">&times;</button>
+    </div>
+    <div class="modal-body" style="padding:20px 24px">
+      <div style="display:grid;gap:10px">
+        <label style="font-size:12px;color:#444">이름 <input type="text" id="add-name" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:4px;margin-top:4px"></label>
+        <label style="font-size:12px;color:#444">이메일 (필수) <input type="email" id="add-email" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:4px;margin-top:4px"></label>
+        <label style="font-size:12px;color:#444">소속 <input type="text" id="add-org" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:4px;margin-top:4px"></label>
+        <label style="font-size:12px;color:#444">전문분야 (직함) <input type="text" id="add-field" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:4px;margin-top:4px"></label>
+        <label style="font-size:12px;color:#444">연락처 <input type="text" id="add-phone" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:4px;margin-top:4px"></label>
+        <label style="font-size:12px;color:#444">구분 <select id="add-category" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:4px;margin-top:4px">
+          <option value="">선택...</option>
+          <option value="01.중앙정부">01.중앙정부</option>
+          <option value="02.국책연구원">02.국책연구원</option>
+          <option value="03.시도연구원">03.시도연구원</option>
+          <option value="04.공사·신탁">04.공사·신탁</option>
+          <option value="05.광역지자체">05.광역지자체</option>
+          <option value="06.기초지자체">06.기초지자체</option>
+          <option value="07.학계">07.학계</option>
+          <option value="08.협회·학회">08.협회·학회</option>
+          <option value="09.건축설계사무소">09.건축설계사무소</option>
+          <option value="10.건설사·디벨로퍼">10.건설사·디벨로퍼</option>
+          <option value="11.부동산·도시운영">11.부동산·도시운영</option>
+          <option value="12.구조설계">12.구조설계</option>
+          <option value="99.기타">99.기타</option>
+        </select></label>
+      </div>
+      <div id="add-error" style="color:#b91c1c;font-size:12px;margin-top:10px"></div>
+      <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">
+        <button class="btn btn-outline btn-sm" onclick="closeAddParticipant()">취소</button>
+        <button class="btn btn-blue btn-sm" onclick="submitAddParticipant()">추가</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  try {
+    const mod = await import('./questions.js');
+    window.SURVEY_SECTIONS = mod.sections;
+    window.Q_TYPE = mod.Q_TYPE;
+  } catch (e) {
+    console.warn('questions.js not loaded — 응답 상세 모달에서 문항 텍스트가 표시되지 않습니다.', e);
+  }
+</script>
 <script>window.SURVEY_API = 'https://alris.ddns.net:8443/small-housing';</script>
+<script>window.SURVEY_PUBLIC_URL = 'https://burn001.github.io/auri-small-housing-survey/';</script>
 <script src="admin.js"></script>
 </body>
 </html>

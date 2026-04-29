@@ -35,7 +35,10 @@ jobs:
           npm run build
 
       - name: Copy admin dashboard to dist
-        run: cp -r frontend/admin frontend/dist/admin
+        run: |
+          cp -r frontend/admin frontend/dist/admin
+          # admin 응답 상세 모달이 questions.js를 동적 import — 빌드된 모듈 대신 source 그대로 복사
+          cp frontend/src/questions.js frontend/dist/admin/questions.js
 
       - uses: actions/upload-pages-artifact@v3
         with:
