@@ -33,7 +33,12 @@ const EDIT_MODE = {
 export class SurveyEngine {
   constructor(container) {
     this.container = container;
-    this.token = new URLSearchParams(window.location.search).get('token');
+    const urlParams = new URLSearchParams(window.location.search);
+    this.token = urlParams.get('token');
+    // 자가등록 직후 토큰 URL로 이동했을 때 1회 표시되는 북마크 안내 플래그
+    this.justRegistered = urlParams.get('just_registered') === '1';
+    // 직원 테스트 모드: ?source=staff 진입 시 분석 제외 마커 부여 (등록 후 redirect URL에도 유지).
+    this.isStaffMode = urlParams.get('source') === 'staff';
     this.participant = null;
     this.submitted = false;
     this.submittedAt = null;
@@ -262,12 +267,23 @@ export class SurveyEngine {
       return `<option value="${this.escape(c)}" ${sel}>${this.escape(c)}</option>`;
     }).join('');
 
+    const staffBanner = this.isStaffMode ? `
+      <div class="register-card" style="background:#fef3c7;border-color:#fcd34d">
+        <p style="margin:0;color:#92400e;font-weight:500;font-size:13px;line-height:1.7">
+          🧪 <strong>직원 테스트 모드</strong> — 이 링크로 등록한 응답은
+          <strong>분석·통계·사례품 발송 대상에서 자동 제외</strong>됩니다. 일반 응답자는 본 링크로 진입하지 마세요.
+        </p>
+      </div>
+    ` : '';
+
     this.container.innerHTML = `
       <div class="survey-container">
         <div class="register-shell">
           <div class="register-institution">${m.institution}</div>
           <h1 class="register-title">${m.title}</h1>
           <div class="register-subtitle">${m.subtitle}</div>
+
+          ${staffBanner}
 
           <div class="register-card">
             <h3>본 설문 안내</h3>
@@ -380,6 +396,7 @@ export class SurveyEngine {
         org: (d.org || '').trim(),
         category: (d.category || '').trim(),
         consent_pi: true,
+        is_staff: !!this.isStaffMode,
       };
       const res = await fetch(`${API_BASE}/api/survey/register`, {
         method: 'POST',
@@ -405,8 +422,12 @@ export class SurveyEngine {
       }
 
       // 미응답이면 발급 토큰 URL로 이동 — 페이지 reload하여 토큰 인증 흐름 진입.
+      // just_registered=1 플래그로 인트로에 "이 URL 북마크 안내" 배너 1회 표시.
+      // 직원 테스트 모드는 redirect 후에도 source=staff 파라미터 유지 (참고 표시용).
       const url = new URL(window.location.href);
       url.searchParams.set('token', data.token);
+      url.searchParams.set('just_registered', '1');
+      if (this.isStaffMode) url.searchParams.set('source', 'staff');
       window.location.href = url.toString();
     } catch (e) {
       this.regError = e.message || '등록 중 오류가 발생했습니다. 잠시 후 다시 시도해 주십시오.';
@@ -621,6 +642,32 @@ export class SurveyEngine {
       `<tr><th>${k}</th><td>${v}</td></tr>`
     ).join('');
 
+    // 자가등록 직후(`?just_registered=1`) 1회 표시되는 북마크 안내. 닫으면 URL에서 플래그 제거.
+    const bookmarkBanner = this.justRegistered ? `
+      <div class="bookmark-banner">
+        <div class="bookmark-banner-icon">🔖</div>
+        <div class="bookmark-banner-body">
+          <strong>이 페이지의 URL을 북마크해 주세요.</strong>
+          <p>응답 작성 도중 자리를 비우셨다가 다시 돌아오실 때 사용하시는 <strong>고유 응답 링크</strong>입니다.
+             제출 직후 입력하신 이메일로 응답 확인 링크가 자동 발송됩니다.</p>
+          <button class="bookmark-banner-close" id="btn-bookmark-close" aria-label="닫기">×</button>
+        </div>
+      </div>
+    ` : '';
+
+    // 직원 테스트 모드 또는 verify_token으로 확인된 source=staff 응답자에게 상시 노출되는 알림.
+    const isStaffParticipant = (this.participant && this.participant.source === 'staff') || this.isStaffMode;
+    const staffBanner = isStaffParticipant ? `
+      <div class="bookmark-banner" style="background:#fef3c7;border-color:#fcd34d">
+        <div class="bookmark-banner-icon">🧪</div>
+        <div class="bookmark-banner-body">
+          <strong style="color:#92400e">직원 테스트 응답</strong>
+          <p style="color:#92400e">이 응답은 <strong>분석·통계·사례품 발송 대상에서 제외</strong>됩니다.
+             테스트 목적으로만 자유롭게 작성·제출하셔도 됩니다.</p>
+        </div>
+      </div>
+    ` : '';
+
     this.container.innerHTML = `
       ${statusBar}
       <div class="progress-bar-wrap"><div class="progress-bar-inner">
@@ -633,6 +680,10 @@ export class SurveyEngine {
           <h1>${m.title}</h1>
           <div class="subtitle">${m.subtitle}</div>
         </div>
+
+        ${staffBanner}
+
+        ${bookmarkBanner}
 
         ${participantCard}
 
@@ -688,6 +739,13 @@ export class SurveyEngine {
     this.container.querySelector('#btn-start')?.addEventListener('click', () => {
       if (!this.commitIntroConsent()) return;
       this.currentPage = 1;
+      this.render();
+    });
+    this.container.querySelector('#btn-bookmark-close')?.addEventListener('click', () => {
+      this.justRegistered = false;
+      const url = new URL(window.location.href);
+      url.searchParams.delete('just_registered');
+      window.history.replaceState({}, '', url.toString());
       this.render();
     });
   }

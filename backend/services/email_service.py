@@ -65,6 +65,17 @@ def render_email(name: str, org: str, survey_url: str, email_type: str = "invite
             .replace("{{lead_html}}", meta["lead_html"]))
 
 
+def render_completion(name: str, org: str, review_url: str) -> str:
+    """응답 제출 직후 자동 발송 — 본인용 확인·수정 링크 포함."""
+    html = _load_template("survey_complete.html")
+    org_suffix = f" ({org})" if (org or "").strip() else ""
+    return (html
+            .replace("{{name}}", name or "응답자")
+            .replace("{{org}}", org or "")
+            .replace("{{org_suffix}}", org_suffix)
+            .replace("{{review_url}}", review_url or ""))
+
+
 def render_custom(name: str, org: str, survey_url: str, body_html: str) -> str:
     """관리자가 작성한 자유 본문에 placeholder 치환. plain text 입력은 줄바꿈을 <br>로 변환."""
     html = body_html or ""
@@ -100,6 +111,7 @@ __all__ = [
     "EMAIL_TYPE_META",
     "email_subject_for",
     "render_email",
+    "render_completion",
     "render_custom",
     "send_email",
     "_normalize_survey_url",

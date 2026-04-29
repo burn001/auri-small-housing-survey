@@ -1210,3 +1210,26 @@ body {
 .consent-check { display:flex; align-items:flex-start; gap:10px; padding:12px 14px; background:#fffbeb; border:1px solid #fcd34d; border-radius:6px; cursor:pointer; }
 .consent-check input[type=checkbox] { width:18px; height:18px; margin-top:2px; flex-shrink:0; cursor:pointer; }
 .consent-check span { font-size:13px; line-height:1.6; color:#1f2937; }
+
+
+/* ── Bookmark Banner (자가등록 직후 1회 노출) ── */
+.bookmark-banner {
+  background: #fef9e7;
+  border: 1px solid #f5e4a8;
+  border-radius: 8px;
+  padding: 16px 18px;
+  margin-bottom: 24px;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+.bookmark-banner-icon { font-size: 24px; line-height: 1; flex-shrink: 0; }
+.bookmark-banner-body { flex: 1; position: relative; padding-right: 24px; }
+.bookmark-banner-body strong { display: block; font-size: 14px; color: #5b4a14; margin-bottom: 4px; }
+.bookmark-banner-body p { font-size: 12px; color: #6b5d3a; line-height: 1.6; margin: 0; }
+.bookmark-banner-close {
+  position: absolute; top: -4px; right: -4px;
+  background: transparent; border: none; font-size: 18px;
+  color: #b09a4d; cursor: pointer; padding: 4px 8px;
+}
+.bookmark-banner-close:hover { color: #5b4a14; }

@@ -25,12 +25,15 @@ class SelfRegisterRequest(BaseModel):
     필수: email(완료 메일·dedup), name, consent_pi.
     선택: org, category(SQ1 분류와 동일 옵션 권장).
     사례품 동의는 응답 제출 시점에 받으므로 자가등록 단계에서는 받지 않는다.
+    is_staff=True 진입(`?source=staff`)은 직원 테스트 모드 — source='staff'로 기록되어
+    관리자 분석 화면에서 별도 분리/제외할 수 있다.
     """
     email: str
     name: str
     org: str = ""
     category: str = ""
     consent_pi: bool
+    is_staff: bool = False
 
 
 class ParticipantOut(BaseModel):

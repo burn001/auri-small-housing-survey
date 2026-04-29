@@ -31,14 +31,37 @@ async def whoami(x_admin_key: Optional[str] = Header(None)):
 
 
 @router.get("/stats")
-async def get_stats(x_admin_key: Optional[str] = Header(None)):
+async def get_stats(
+    x_admin_key: Optional[str] = Header(None),
+    include_staff: bool = False,
+):
+    """기본은 직원 테스트(source=staff) 제외 통계. include_staff=true면 모두 포함."""
     _check_admin(x_admin_key)
     db = get_db()
 
-    total_p = await db.participants.count_documents({})
-    total_r = await db.responses.count_documents({})
+    base_match: dict = {} if include_staff else {"source": {"$ne": "staff"}}
+    total_p = await db.participants.count_documents(base_match)
+    # 응답 카운트는 participants를 기준으로 staff를 제외하기 위해 join이 필요.
+    if include_staff:
+        total_r = await db.responses.count_documents({})
+    else:
+        staff_tokens_cur = db.participants.find({"source": "staff"}, {"token": 1, "_id": 0})
+        staff_tokens = [d["token"] async for d in staff_tokens_cur]
+        total_r = await db.responses.count_documents(
+            {"token": {"$nin": staff_tokens}} if staff_tokens else {}
+        )
+
+    # 별도로 직원 테스트 응답 수치 — 대시보드 카드에 함께 표시한다.
+    staff_p = await db.participants.count_documents({"source": "staff"})
+    staff_tokens_for_resp = [
+        d["token"] async for d in db.participants.find({"source": "staff"}, {"token": 1, "_id": 0})
+    ]
+    staff_r = await db.responses.count_documents(
+        {"token": {"$in": staff_tokens_for_resp}} if staff_tokens_for_resp else {"token": {"$in": []}}
+    )
 
     pipeline = [
+        {"$match": base_match} if base_match else {"$match": {}},
         {"$lookup": {
             "from": "responses",
             "localField": "token",
@@ -65,6 +88,9 @@ async def get_stats(x_admin_key: Optional[str] = Header(None)):
         "total_participants": total_p,
         "total_responses": total_r,
         "by_category": by_category,
+        "staff_participants": staff_p,
+        "staff_responses": staff_r,
+        "staff_excluded": not include_staff,
     }
 
 
@@ -74,6 +100,7 @@ async def list_responses(
     skip: int = 0,
     limit: int = 200,
     category: Optional[str] = None,
+    source: Optional[str] = None,
 ):
     _check_admin(x_admin_key)
     db = get_db()
@@ -89,6 +116,19 @@ async def list_responses(
     ]
     if category:
         pipeline.append({"$match": {"participant.category": category}})
+    if source == "self":
+        pipeline.append({"$match": {"participant.source": "self"}})
+    elif source == "imported":
+        pipeline.append({"$match": {
+            "$or": [
+                {"participant.source": "imported"},
+                {"participant.source": {"$exists": False}},
+            ],
+        }})
+    elif source == "staff":
+        pipeline.append({"$match": {"participant.source": "staff"}})
+    elif source == "exclude_staff":
+        pipeline.append({"$match": {"participant.source": {"$ne": "staff"}}})
     pipeline += [
         {"$sort": {"submitted_at": -1}},
         {"$skip": skip},
@@ -105,10 +145,13 @@ async def list_responses(
             "org": "$participant.org",
             "category": "$participant.category",
             "field": "$participant.field",
+            "source": {"$ifNull": ["$participant.source", "imported"]},
             "consent_reward": {"$ifNull": ["$participant.consent_reward", False]},
             "reward_name": {"$ifNull": ["$participant.reward_name", ""]},
             "reward_phone": {"$ifNull": ["$participant.reward_phone", ""]},
             "consent_reward_at": "$participant.consent_reward_at",
+            "consent_pi": {"$ifNull": ["$participant.consent_pi", False]},
+            "consent_pi_at": "$participant.consent_pi_at",
         }},
     ]
     cursor = db.responses.aggregate(pipeline)
@@ -117,7 +160,11 @@ async def list_responses(
 
 
 @router.get("/export")
-async def export_csv(x_admin_key: Optional[str] = Header(None)):
+async def export_csv(
+    x_admin_key: Optional[str] = Header(None),
+    source: Optional[str] = None,
+):
+    """응답 CSV 내보내기. source=self|imported 시 해당 출처 응답자만 추출."""
     _check_admin(x_admin_key)
     db = get_db()
     import csv, io, json as _json
@@ -131,8 +178,16 @@ async def export_csv(x_admin_key: Optional[str] = Header(None)):
             "as": "p",
         }},
         {"$unwind": {"path": "$p", "preserveNullAndEmptyArrays": True}},
-        {"$sort": {"submitted_at": 1}},
     ]
+    if source == "self":
+        pipeline.append({"$match": {"p.source": "self"}})
+    elif source == "imported":
+        pipeline.append({"$match": {"$or": [{"p.source": "imported"}, {"p.source": {"$exists": False}}]}})
+    elif source == "staff":
+        pipeline.append({"$match": {"p.source": "staff"}})
+    elif source == "exclude_staff":
+        pipeline.append({"$match": {"p.source": {"$ne": "staff"}}})
+    pipeline.append({"$sort": {"submitted_at": 1}})
     cursor = db.responses.aggregate(pipeline)
     docs = [doc async for doc in cursor]
 
@@ -146,7 +201,7 @@ async def export_csv(x_admin_key: Optional[str] = Header(None)):
 
     output = io.StringIO()
     writer = csv.writer(output)
-    header = ["token", "name", "org", "category", "field", "submitted_at", "updated_at"] + sorted_keys
+    header = ["token", "name", "org", "category", "field", "source", "submitted_at", "updated_at"] + sorted_keys
     writer.writerow(header)
 
     for d in docs:
@@ -158,6 +213,7 @@ async def export_csv(x_admin_key: Optional[str] = Header(None)):
             p.get("org", ""),
             p.get("category", ""),
             p.get("field", ""),
+            p.get("source", "imported"),
             str(d.get("submitted_at", "")),
             str(d.get("updated_at", "")),
         ]
@@ -170,10 +226,11 @@ async def export_csv(x_admin_key: Optional[str] = Header(None)):
         writer.writerow(row)
 
     output.seek(0)
+    suffix = f"_{source}" if source in ("self", "imported") else ""
     return StreamingResponse(
         iter(["﻿" + output.getvalue()]),
         media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": "attachment; filename=survey_responses.csv"},
+        headers={"Content-Disposition": f"attachment; filename=survey_responses{suffix}.csv"},
     )
 
 
@@ -181,6 +238,7 @@ async def export_csv(x_admin_key: Optional[str] = Header(None)):
 async def list_participants(
     x_admin_key: Optional[str] = Header(None),
     category: Optional[str] = None,
+    source: Optional[str] = None,
     skip: int = 0,
     limit: int = 5000,
 ):
@@ -189,6 +247,15 @@ async def list_participants(
     match: dict = {}
     if category:
         match["category"] = category
+    if source == "self":
+        match["source"] = "self"
+    elif source == "imported":
+        # 과거 데이터(필드 부재)도 imported로 간주
+        match["$or"] = [{"source": "imported"}, {"source": {"$exists": False}}]
+    elif source == "staff":
+        match["source"] = "staff"
+    elif source == "exclude_staff":
+        match["source"] = {"$ne": "staff"}
 
     pipeline = [
         {"$match": match},

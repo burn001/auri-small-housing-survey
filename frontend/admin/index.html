@@ -30,6 +30,7 @@
     <a class="nav-item active" data-page="dashboard">대시보드</a>
     <a class="nav-item" data-page="participants">대상자 &amp; 이메일</a>
     <a class="nav-item" data-page="responses">응답 조회</a>
+    <a class="nav-item" data-page="self">자가등록 운영</a>
     <a class="nav-item" style="margin-top:auto;color:#666;font-size:12px" onclick="logout()">로그아웃</a>
   </nav>
 
@@ -73,6 +74,13 @@
             <option value="unresponded">미응답만</option>
             <option value="responded">응답완료만</option>
           </select>
+          <select id="p-source">
+            <option value="">출처: 전체</option>
+            <option value="exclude_staff">직원 테스트 제외</option>
+            <option value="imported">사전 등록(import)</option>
+            <option value="self">자가등록(공개 링크)</option>
+            <option value="staff">직원 테스트</option>
+          </select>
           <button class="btn btn-blue btn-sm" id="btn-send" disabled onclick="sendSelected()">선택 발송 (0)</button>
           <button class="btn btn-outline btn-sm" id="btn-custom-send" disabled onclick="openCustomCompose()">자유 본문 발송 (0)</button>
           <button class="btn btn-outline btn-sm" onclick="sendToUnresponded()">미응답자 재발송</button>
@@ -105,12 +113,52 @@
           <option value="12.구조설계">12.구조설계</option>
           <option value="99.기타">99.기타</option>
         </select>
+        <select id="r-source">
+          <option value="">출처: 전체</option>
+          <option value="exclude_staff">직원 테스트 제외</option>
+          <option value="imported">사전 등록(import)</option>
+          <option value="self">자가등록(공개 링크)</option>
+          <option value="staff">직원 테스트</option>
+        </select>
         <button class="btn btn-outline btn-sm" onclick="loadResponses()">조회</button>
         <button class="btn btn-primary btn-sm" onclick="downloadCSV()">응답 CSV</button>
         <button class="btn btn-outline btn-sm" onclick="exportRewardCSV()">🎁 사례품 명단 CSV</button>
       </div>
       <div class="table-wrap">
         <div id="r-table"></div>
+      </div>
+    </div>
+
+    <!-- Self-registration Operations -->
+    <div id="page-self" class="page">
+      <h2 class="page-title">자가등록 운영</h2>
+      <p style="font-size:13px;color:var(--text3);margin:0 0 16px;line-height:1.7">
+        공개 단일 링크(<code id="self-public-url"></code>)로 직접 등록·응답한 응답자만 별도로 모아서 관리합니다.
+        본 페이지의 통계와 다운로드는 <strong>source=self</strong>로 필터된 자료만 사용합니다 (직원 테스트 <code>source=staff</code>는 별도 카드로 분리 표시).
+        직원 테스트 링크는 <code id="self-staff-url"></code> 형태로 진입합니다.
+      </p>
+      <div id="self-stat-cards" class="stat-grid" style="margin-bottom:18px"></div>
+
+      <div class="table-wrap" style="margin-bottom:24px">
+        <div class="table-toolbar">
+          <strong style="font-size:13px;color:var(--text2)">자가등록 응답 (<span id="self-resp-count">0</span>건)</strong>
+          <div style="margin-left:auto;display:flex;gap:8px">
+            <button class="btn btn-outline btn-sm" onclick="loadSelfView()">새로고침</button>
+            <button class="btn btn-primary btn-sm" onclick="exportSelfResponsesCSV()">자가등록 응답 CSV</button>
+            <button class="btn btn-outline btn-sm" onclick="exportSelfRewardCSV()">🎁 자가등록 사례품 명단</button>
+          </div>
+        </div>
+        <div id="self-resp-table"></div>
+      </div>
+
+      <div class="table-wrap">
+        <div class="table-toolbar">
+          <strong style="font-size:13px;color:var(--text2)">자가등록 미응답자 (<span id="self-pend-count">0</span>명)</strong>
+          <div style="margin-left:auto;color:var(--text3);font-size:11px">
+            등록은 했지만 아직 설문 제출이 없는 응답자.
+          </div>
+        </div>
+        <div id="self-pend-table"></div>
       </div>
     </div>
   </div>

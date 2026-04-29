@@ -1,13 +1,64 @@
+import logging
 from fastapi import APIRouter, Request, HTTPException
-from datetime import datetime
+from datetime import datetime, timezone
 import re
 import uuid
 from models import ResponseSubmit, ResponseRecord, ParticipantUpdate, SelfRegisterRequest
 from services.db import get_db
+from services.email_service import render_completion, send_email
+from config import get_settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["responses"])
 
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+
+async def _send_completion_email(participant: dict, token: str) -> None:
+    """응답 제출 직후 자동 발송. 실패해도 응답 처리는 영향받지 않음.
+    email_logs에 type=completion으로 기록하여 발송 이력에 함께 노출된다.
+    """
+    s = get_settings()
+    if not s.GMAIL_USER or not s.GMAIL_APP_PASSWORD:
+        return
+    if not participant.get("email"):
+        return
+    db = get_db()
+    base = (s.SURVEY_BASE_URL or "").rstrip("/")
+    review_url = f"{base}/?token={token}"
+    subject = "[AURI 소규모 주거 전문가 설문] 응답 완료 안내 — 내 응답 확인 링크"
+    html = render_completion(
+        participant.get("name", ""),
+        participant.get("org", ""),
+        review_url,
+    )
+    now = datetime.now(timezone.utc)
+    log_doc = {
+        "batch_id": "auto-completion",
+        "token": token,
+        "email": participant["email"],
+        "name": participant.get("name", ""),
+        "org": participant.get("org", ""),
+        "category": participant.get("category", ""),
+        "type": "completion",
+        "subject": subject,
+        "admin_email": "system",
+        "admin_name": "자동 발송",
+        "sent_at": now,
+    }
+    try:
+        send_email(participant["email"], subject, html)
+        log_doc.update({"status": "sent", "error": ""})
+        await db.email_logs.insert_one(log_doc)
+    except Exception as e:
+        err = str(e)
+        logger.warning(f"Completion email failed for {participant['email']}: {err}")
+        log_doc.update({"status": "failed", "error": err})
+        try:
+            await db.email_logs.insert_one(log_doc)
+        except Exception:
+            pass
 
 
 @router.get("/survey/{token}")
@@ -26,6 +77,10 @@ async def verify_token(token: str):
         "category": participant.get("category", ""),
         "field": participant.get("field", ""),
         "phone": participant.get("phone", ""),
+        "source": participant.get("source", "imported"),
+        "consent_pi": bool(participant.get("consent_pi", False)),
+        "consent_reward": bool(participant.get("consent_reward", False)),
+        "reward_phone": participant.get("reward_phone", ""),
         "has_responded": existing is not None,
         "responses": existing.get("responses") if existing else None,
         "submitted_at": existing.get("submitted_at").isoformat() if existing and existing.get("submitted_at") else None,
@@ -127,6 +182,7 @@ async def submit_response(body: ResponseSubmit, request: Request):
                 "user_agent": ua,
             }},
         )
+        # 수정 제출 시에는 완료 메일을 다시 보내지 않는다 (스팸 방지). 최초 제출 시점에 1회만 발송.
         return {"status": "updated", "token": body.token}
 
     record = ResponseRecord(
@@ -138,6 +194,10 @@ async def submit_response(body: ResponseSubmit, request: Request):
         user_agent=ua,
     )
     await db.responses.insert_one(record.model_dump())
+    # 최초 제출 — 응답자에게 완료 안내 메일 자동 발송 (실패해도 응답은 정상 저장됨)
+    # 이때 participants 문서에는 위에서 reward 정보 갱신이 반영되었을 수 있으므로 재조회한다.
+    refreshed = await db.participants.find_one({"token": body.token}) or participant
+    await _send_completion_email(refreshed, body.token)
     return {"status": "created", "token": body.token}
 
 
@@ -182,15 +242,17 @@ async def self_register(body: SelfRegisterRequest, request: Request):
     if existing:
         token = existing["token"]
         # 기존 등록자의 source는 보존 (첫 진입 채널 유지). imported였던 응답자가
-        # 자가등록 페이지로 들어와도 imported로 남는다.
-        base_fields["source"] = existing.get("source", "imported")
+        # 자가등록 페이지로 들어와도 imported로 남는다. 단 직원 테스트 모드는 동일 이메일로
+        # 다시 진입했더라도 staff로 승격(분석에서 제외되도록).
+        existing_source = existing.get("source", "imported")
+        base_fields["source"] = "staff" if body.is_staff else existing_source
         await db.participants.update_one({"token": token}, {"$set": base_fields})
         status = "updated"
     else:
         token = uuid.uuid4().hex[:16]
         base_fields.update({
             "token": token,
-            "source": "self",
+            "source": "staff" if body.is_staff else "self",
             "field": "",
             "phone": "",
             "created_at": now,

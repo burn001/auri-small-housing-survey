@@ -61,8 +61,15 @@ document.querySelectorAll('.nav-item[data-page]').forEach(el => {
     if (page === 'dashboard') loadDashboard();
     if (page === 'participants') loadParticipants();
     if (page === 'responses') loadResponses();
+    if (page === 'self') loadSelfView();
   });
 });
+
+function sourceBadge(src) {
+  if (src === 'staff') return '<span class="badge badge-orange">🧪 직원 테스트</span>';
+  if (src === 'self')  return '<span class="badge badge-purple">자가등록</span>';
+  return '<span class="badge badge-gray">사전등록</span>';
+}
 
 // ── API Helper ──
 async function api(path, opts = {}) {
@@ -116,10 +123,15 @@ async function loadDashboard() {
   const data = await api('/api/admin/stats');
   const cats = data.by_category;
 
+  const staffNote = (data.staff_participants || 0) > 0
+    ? `<div class="stat-card" style="background:#fef3c7"><div class="label">🧪 직원 테스트 (분석 제외)</div><div class="value" style="color:#b45309">${data.staff_responses}/${data.staff_participants}</div></div>`
+    : '';
+
   document.getElementById('stat-cards').innerHTML = `
-    <div class="stat-card"><div class="label">전체 대상자</div><div class="value">${data.total_participants}</div></div>
-    <div class="stat-card"><div class="label">응답 완료</div><div class="value">${data.total_responses}</div></div>
+    <div class="stat-card"><div class="label">전체 대상자${data.staff_excluded ? ' <span style="font-size:10px;color:#94a3b8">(staff 제외)</span>' : ''}</div><div class="value">${data.total_participants}</div></div>
+    <div class="stat-card"><div class="label">응답 완료${data.staff_excluded ? ' <span style="font-size:10px;color:#94a3b8">(staff 제외)</span>' : ''}</div><div class="value">${data.total_responses}</div></div>
     <div class="stat-card"><div class="label">응답률</div><div class="value">${data.total_participants ? (data.total_responses / data.total_participants * 100).toFixed(1) : 0}%</div></div>
+    ${staffNote}
   `;
 
   const order = Object.keys(cats).sort();
@@ -169,8 +181,10 @@ function relTime(iso) {
 async function loadParticipants(page = 0) {
   pPage = page;
   const cat = document.getElementById('p-category').value;
+  const src = document.getElementById('p-source')?.value || '';
   const params = new URLSearchParams({ skip: '0', limit: '5000' });
   if (cat) params.set('category', cat);
+  if (src) params.set('source', src);
   const data = await api('/api/admin/participants?' + params.toString());
   pCache = data.data;
   pSelected.clear();
@@ -207,7 +221,7 @@ function renderParticipants() {
   document.getElementById('p-table').innerHTML = `<table>
     <thead><tr>
       <th class="checkbox-col"><input type="checkbox" ${allChecked ? 'checked' : ''} onchange="togglePageSelect(this.checked)"></th>
-      <th>이름</th><th>소속</th><th>구분</th><th>전문분야</th><th>이메일</th>
+      <th>이름</th><th>소속</th><th>구분</th><th>전문분야</th><th>출처</th><th>이메일</th>
       <th>발송</th><th>응답</th><th>토큰</th><th></th>
     </tr></thead>
     <tbody>${rows.map(p => {
@@ -218,6 +232,9 @@ function renderParticipants() {
       const typeLabel = { invite: '초대', reminder: '추가요청', deadline: '마감알림', custom: '사용자', completion: '완료알림' }[lastType] || '';
       const sentTime = lastAt ? `${fmtKST(lastAt)}<br><span style="color:var(--text3);font-size:11px">${relTime(lastAt)}</span>` : '';
 
+      const source = p.source || 'imported';
+      const srcBadge = sourceBadge(source);
+
       let sendBadge;
       if (lastStatus === 'failed') {
         sendBadge = `<span class="badge badge-red">실패</span>` +
@@ -226,6 +243,9 @@ function renderParticipants() {
         sendBadge = `<span class="badge badge-green">발송 ${count || 1}회</span>` +
           (typeLabel ? `<span style="font-size:10px;color:var(--text3);margin-left:4px">${typeLabel}</span>` : '') +
           `<div style="font-size:11px;color:var(--text3);margin-top:2px">${sentTime}</div>`;
+      } else if (source === 'self') {
+        // 자가등록자에게는 invite를 보내지 않으므로 발송 표시 대신 등록 표시
+        sendBadge = '<span class="badge badge-purple">발송 불필요</span><div style="font-size:10px;color:var(--text3);margin-top:2px">자가등록</div>';
       } else {
         sendBadge = '<span class="badge badge-gray">미발송</span>';
       }
@@ -243,6 +263,7 @@ function renderParticipants() {
         <td>${p.org || ''}</td>
         <td><span class="badge badge-blue">${p.category || ''}</span></td>
         <td style="font-size:11px;color:#555;max-width:160px">${p.field || ''}</td>
+        <td>${srcBadge}</td>
         <td style="font-size:12px">${p.email}</td>
         <td style="min-width:180px">${sendBadge} ${logBtn}</td>
         <td style="min-width:150px">${respBadge}</td>
@@ -294,6 +315,7 @@ document.getElementById('p-category').addEventListener('change', () => loadParti
 document.getElementById('p-search').addEventListener('input', () => { pPage = 0; renderParticipants(); });
 document.getElementById('p-send-status').addEventListener('change', () => { pPage = 0; renderParticipants(); });
 document.getElementById('p-resp-status').addEventListener('change', () => { pPage = 0; renderParticipants(); });
+document.getElementById('p-source')?.addEventListener('change', () => loadParticipants(0));
 
 async function sendSelected() {
   if (pSelected.size === 0) return;
@@ -416,9 +438,9 @@ function closeLogModal(e) {
 }
 
 function exportParticipantLinks() {
-  const rows = [['name', 'email', 'org', 'category', 'field', 'phone', 'token', 'email_sent_count', 'email_last_sent_at_kst', 'responded', 'survey_link']];
+  const rows = [['name', 'email', 'org', 'category', 'field', 'source', 'phone', 'token', 'email_sent_count', 'email_last_sent_at_kst', 'responded', 'survey_link']];
   pCache.forEach(p => {
-    rows.push([p.name, p.email, p.org || '', p.category || '', p.field || '', p.phone || '', p.token,
+    rows.push([p.name, p.email, p.org || '', p.category || '', p.field || '', p.source || 'imported', p.phone || '', p.token,
       p.email_sent_count || 0,
       p.email_last_sent_at ? fmtKST(p.email_last_sent_at) : (p.email_sent_at ? fmtKST(p.email_sent_at) : ''),
       p.responded ? 'Y' : 'N',
@@ -620,22 +642,26 @@ document.addEventListener('keydown', e => {
 let rCache = [];
 async function loadResponses() {
   const cat = document.getElementById('r-category').value;
-  const params = new URLSearchParams({ skip: '0', limit: '200' });
+  const src = document.getElementById('r-source')?.value || '';
+  const params = new URLSearchParams({ skip: '0', limit: '500' });
   if (cat) params.set('category', cat);
+  if (src) params.set('source', src);
   const data = await api('/api/admin/responses?' + params.toString());
   rCache = data.data;
 
   document.getElementById('r-table').innerHTML = `<table>
-    <thead><tr><th>이름</th><th>소속</th><th>구분</th><th>전문분야</th><th>사례품</th><th>제출일시</th><th>수정일시</th><th>상세</th></tr></thead>
+    <thead><tr><th>이름</th><th>소속</th><th>구분</th><th>전문분야</th><th>출처</th><th>사례품</th><th>제출일시</th><th>수정일시</th><th>상세</th></tr></thead>
     <tbody>${rCache.map(r => {
       const reward = r.consent_reward
         ? `<span class="badge badge-purple">🎁 동의</span><div style="font-size:11px;color:#666;margin-top:2px;font-family:monospace">${r.reward_phone || '(미입력)'}</div>`
         : '<span style="color:#aaa;font-size:11px">미동의</span>';
+      const srcBadge = sourceBadge(r.source);
       return `<tr>
         <td>${r.name || ''}</td>
         <td>${r.org || ''}</td>
         <td><span class="badge badge-blue">${r.category || ''}</span></td>
         <td style="font-size:11px;color:#555">${r.field || ''}</td>
+        <td>${srcBadge}</td>
         <td>${reward}</td>
         <td style="font-size:12px">${r.submitted_at ? new Date(r.submitted_at).toLocaleString('ko') : ''}</td>
         <td style="font-size:12px">${r.updated_at ? new Date(r.updated_at).toLocaleString('ko') : '-'}</td>
@@ -644,6 +670,8 @@ async function loadResponses() {
     }).join('')}</tbody>
   </table>`;
 }
+
+document.getElementById('r-source')?.addEventListener('change', () => loadResponses());
 
 function exportRewardCSV() {
   const eligible = rCache.filter(r => r.consent_reward && r.reward_phone);
@@ -747,6 +775,7 @@ async function showResponseDetail(token) {
   const rewardLine = row.consent_reward
     ? `<dt>사례품 수령</dt><dd>🎁 동의 — ${escapeHtml(row.reward_name || row.name || '-')} · <code style="font-size:11px">${escapeHtml(row.reward_phone || '-')}</code></dd>`
     : '<dt>사례품 수령</dt><dd style="color:#999">미동의</dd>';
+  const srcBadge = sourceBadge(row.source);
   const meta = `
     <div class="resp-meta">
       <dl>
@@ -754,6 +783,7 @@ async function showResponseDetail(token) {
         <dt>소속</dt><dd>${escapeHtml(row.org || '-')}</dd>
         <dt>구분</dt><dd><span class="badge badge-blue">${escapeHtml(row.category || '-')}</span></dd>
         ${row.field ? `<dt>전문분야</dt><dd>${escapeHtml(row.field)}</dd>` : ''}
+        <dt>출처</dt><dd>${srcBadge}${row.consent_pi ? ' · <span style="font-size:11px;color:#666">개인정보 동의' + (row.consent_pi_at ? ` (${new Date(row.consent_pi_at).toLocaleString('ko')})` : '') + '</span>' : ''}</dd>
         ${rewardLine}
         <dt>토큰</dt><dd><code style="font-size:11px">${escapeHtml(token)}</code></dd>
         <dt>설문 버전</dt><dd>${escapeHtml(row.survey_version || '-')}</dd>
@@ -813,4 +843,146 @@ async function downloadCSV() {
   } catch (e) {
     toast('다운로드 실패 (응답 데이터 없음)', 'error');
   }
+}
+
+
+// ── 자가등록 운영 (page-self) ──
+// 공개 단일 링크로 직접 등록한(source==='self') 응답자만 별도로 모아서 보여 준다.
+let selfCache = { participants: [], responses: [] };
+
+async function loadSelfView() {
+  try {
+    const urlEl = document.getElementById('self-public-url');
+    if (urlEl) urlEl.textContent = SURVEY_BASE;
+    const staffEl = document.getElementById('self-staff-url');
+    if (staffEl) staffEl.textContent = (SURVEY_BASE.replace(/\?.*$/, '') + '?source=staff');
+    // self + staff 둘 다 끌어와 한 페이지에서 분리 카드로 보여 준다.
+    const [pSelfData, rSelfData, pStaffData, rStaffData] = await Promise.all([
+      api('/api/admin/participants?source=self&limit=5000'),
+      api('/api/admin/responses?source=self&limit=5000'),
+      api('/api/admin/participants?source=staff&limit=5000'),
+      api('/api/admin/responses?source=staff&limit=5000'),
+    ]);
+    const participants = pSelfData.data || [];
+    const responses = rSelfData.data || [];
+    const staffParticipants = pStaffData.data || [];
+    const staffResponses = rStaffData.data || [];
+    selfCache = { participants, responses, staffParticipants, staffResponses };
+    renderSelfStats();
+    renderSelfResponses();
+    renderSelfPending();
+  } catch (e) {
+    toast('자가등록 운영 화면 로드 실패: ' + (e.message || e), 'error');
+  }
+}
+
+function renderSelfStats() {
+  const ps = selfCache.participants;
+  const total = ps.length;
+  const responded = ps.filter(p => p.responded).length;
+  const pending = total - responded;
+  const consenters = selfCache.responses.filter(r => r.consent_reward).length;
+  const staffTotal = (selfCache.staffParticipants || []).length;
+  const staffResp = (selfCache.staffResponses || []).length;
+  const staffCard = staffTotal > 0
+    ? `<div class="stat-card" style="background:#fef3c7"><div class="label">🧪 직원 테스트 (분석 제외)</div><div class="value" style="color:#b45309">${staffResp}/${staffTotal}</div></div>`
+    : `<div class="stat-card" style="background:#f9fafb;border:1px dashed #d1d5db"><div class="label" style="color:#94a3b8">🧪 직원 테스트</div><div class="value" style="color:#cbd5e1">0/0</div></div>`;
+  document.getElementById('self-stat-cards').innerHTML = `
+    <div class="stat-card"><div class="label">자가등록자</div><div class="value">${total}</div></div>
+    <div class="stat-card"><div class="label">응답 완료</div><div class="value">${responded}</div></div>
+    <div class="stat-card"><div class="label">미응답</div><div class="value">${pending}</div></div>
+    <div class="stat-card"><div class="label">사례품 동의(응답완료)</div><div class="value">${consenters}</div></div>
+    ${staffCard}
+  `;
+}
+
+function renderSelfResponses() {
+  const rows = selfCache.responses;
+  document.getElementById('self-resp-count').textContent = String(rows.length);
+  if (rows.length === 0) {
+    document.getElementById('self-resp-table').innerHTML =
+      '<div style="padding:18px;color:#94a3b8;font-size:13px">아직 자가등록 응답이 없습니다.</div>';
+    return;
+  }
+  document.getElementById('self-resp-table').innerHTML = `<table>
+    <thead><tr><th>이름</th><th>소속</th><th>구분</th><th>전문분야</th><th>사례품</th><th>제출</th><th>상세</th></tr></thead>
+    <tbody>${rows.map(r => {
+      const reward = r.consent_reward
+        ? `<span class="badge badge-purple">🎁 동의</span><div style="font-size:11px;color:#666;font-family:monospace">${r.reward_phone || '(미입력)'}</div>`
+        : '<span style="color:#aaa;font-size:11px">미동의</span>';
+      return `<tr>
+        <td>${r.name || ''}</td>
+        <td>${r.org || ''}</td>
+        <td><span class="badge badge-blue">${r.category || ''}</span></td>
+        <td style="font-size:11px;color:#555">${r.field || ''}</td>
+        <td>${reward}</td>
+        <td style="font-size:12px">${r.submitted_at ? new Date(r.submitted_at).toLocaleString('ko') : ''}</td>
+        <td><button class="btn btn-sm btn-outline" onclick="showResponseDetail('${r.token}')">열기</button></td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
+  // showResponseDetail이 rCache를 보므로, 자가등록 페이지에서도 열람 가능하도록 캐시에 머지.
+  const known = new Set((rCache || []).map(x => x.token));
+  for (const r of rows) if (!known.has(r.token)) rCache.push(r);
+}
+
+function renderSelfPending() {
+  const rows = selfCache.participants.filter(p => !p.responded);
+  document.getElementById('self-pend-count').textContent = String(rows.length);
+  if (rows.length === 0) {
+    document.getElementById('self-pend-table').innerHTML =
+      '<div style="padding:18px;color:#94a3b8;font-size:13px">미응답 자가등록자가 없습니다.</div>';
+    return;
+  }
+  document.getElementById('self-pend-table').innerHTML = `<table>
+    <thead><tr><th>이름</th><th>이메일</th><th>소속</th><th>구분</th><th>등록 일시</th><th>토큰</th></tr></thead>
+    <tbody>${rows.map(p => `<tr>
+      <td>${p.name || ''}</td>
+      <td style="font-size:12px">${p.email || ''}</td>
+      <td>${p.org || ''}</td>
+      <td><span class="badge badge-blue">${p.category || ''}</span></td>
+      <td style="font-size:12px">${p.created_at ? fmtKST(p.created_at) : ''}</td>
+      <td><code style="font-size:11px;cursor:pointer" onclick="navigator.clipboard.writeText('${SURVEY_BASE}?token=${p.token}');toast('링크 복사됨')">${p.token}</code></td>
+    </tr>`).join('')}</tbody></table>`;
+}
+
+async function exportSelfResponsesCSV() {
+  // 백엔드 /export?source=self 사용 — 대용량에서도 안전.
+  try {
+    const res = await fetch(API + '/api/admin/export?source=self', {
+      headers: { 'X-Admin-Key': ADMIN_KEY },
+    });
+    if (!res.ok) throw new Error('No data');
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `survey_responses_self_${Date.now()}.csv`;
+    a.click();
+    toast('자가등록 응답 CSV 다운로드 완료');
+  } catch (e) {
+    toast('다운로드 실패 (자가등록 응답 없음)', 'error');
+  }
+}
+
+function exportSelfRewardCSV() {
+  // 자가등록 + 사례품 동의 + 응답 완료. selfCache.responses 기준.
+  const eligible = selfCache.responses.filter(r => r.consent_reward && r.reward_phone);
+  if (eligible.length === 0) {
+    toast('사례품 발송 대상이 없습니다 (자가등록 + 동의 + 휴대폰 입력 기준).', 'error');
+    return;
+  }
+  const rows = [['이름', '소속', '구분', '전문분야', '휴대폰', '응답일시', '동의일시', '이메일', '토큰']];
+  eligible.forEach(r => rows.push([
+    r.name || '', r.org || '', r.category || '', r.field || '',
+    r.reward_phone || '',
+    r.submitted_at ? new Date(r.submitted_at).toLocaleString('ko') : '',
+    r.consent_reward_at ? new Date(r.consent_reward_at).toLocaleString('ko') : '',
+    r.email || '', r.token || '',
+  ]));
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `reward_recipients_self_${Date.now()}.csv`;
+  a.click();
+  toast(`자가등록 사례품 명단 ${eligible.length}건 다운로드`);
 }
